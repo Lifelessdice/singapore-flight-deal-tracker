@@ -43,14 +43,15 @@ The app is a local scheduler and fare journal:
 6. Fare logging is manual by design. This avoids fragile scraping of dynamic flight pages and keeps the tracker aligned with source-site restrictions.
 7. The insight badge compares the latest logged fare to your own median history. It labels a route as target hit, strong deal, good deal, high versus history, or watching.
 
-The deal algorithm is relative-first. A fare is only treated as a real alert if it is cheaper than what this tracker has usually observed for the same route and trip type. Absolute price caps are context, not enough by themselves.
+The deal algorithm is relative-first. A fare is only treated as a real alert if it is cheaper than what this tracker has usually observed for the same route and trip type. Absolute price caps are context, not enough by themselves. See [DEAL_CRITERIA.md](DEAL_CRITERIA.md) for the complete search scope, scoring rules, research decisions, and unresolved baggage/visa inputs.
 
-- `strong deal`: latest fare is at least 20% below the route median.
-- `good deal`: latest fare is at least 10% below the route median.
+- `strong deal`: latest fare is at least 20% below the prior route median and is a robust statistical outlier.
+- `good deal`: latest fare is at least 10% below the prior route median and is statistically unusual.
+- `Google market deal`: latest fare is materially below Google's typical-price range.
 - `high versus history`: latest fare is at least 10% above the route median.
-- confidence: low, medium, or high based on sample count and number of sources.
+- confidence: low, medium, or high based on prior sample count and independent Google market data.
 
-The worker needs at least three samples for the same route and trip type before it can call something a relative deal. It suppresses repeat alerts for seven days unless a lower price appears.
+The worker needs at least three prior samples for the same route and trip type before local history can call something a relative deal. It excludes the new price from its own baseline, uses median absolute deviation to reject ordinary volatility, and prefers observations from the same booking lead-time bucket. Google's typical-price range can independently qualify a fare before local history is mature. Repeat alerts are suppressed for seven days unless a lower price appears.
 
 Each alert includes:
 
@@ -62,6 +63,7 @@ Each alert includes:
 - estimated savings versus median and average
 - historical best observed fare
 - sample count and confidence level
+- Google's typical-price range and the signals that triggered the alert
 
 ## Native alert setup
 
@@ -127,7 +129,7 @@ Create a SerpApi account and add this GitHub repository secret:
 SERPAPI_API_KEY
 ```
 
-The worker uses `engine=google_flights`, sorts by price, allows Google Flights hidden results, limits stops/duration, and rotates through searches so the free tier is not burned too quickly.
+The worker uses Google Travel Explore to discover short trips across configured months, then verifies promising results with exact `engine=google_flights` searches. It sorts by price, allows Google Flights hidden results, limits stops and total duration, and rotates through searches so the free tier is not burned too quickly.
 
 ### 3. Add a free alert channel
 
@@ -182,9 +184,11 @@ Open-source GitHub projects tend to choose one of two heavier approaches:
 - scraper/API-backed trackers such as Flight Finder, FlightClaw, and Google Flights scraping examples;
 - predictive ML projects using historical features and regression models.
 
-Those approaches can be useful for a self-hosted server with credentials, proxies, and a database. For this local free tool, the lower-risk enhancement is a median-based deal score over manually verified fare history.
+Several popular trackers use a 5% change or a fixed dollar drop from the immediately previous observation. Live fares are noisy enough that this produces weak alerts. The worker instead uses a prior median, median absolute deviation, lead-time buckets, and Google's typical-price range. Google's own Flight Deals methodology also uses a historical median and describes a savings deal as at least 20% below typical.
 
-The included scheduled worker takes the safer production path: API-backed fare collection, flexible airport/date search, median-based deal scoring, and source links for final verification.
+The documented Google Flights Deals API was also tested live. Its trip-length controls returned trips outside the requested 2-to-4-day window, so it was rejected for production. Google Travel Explore respected weekend-duration searches and is now paired with exact fare verification.
+
+The included scheduled worker takes the safer production path: API-backed fare collection, open-ended destination discovery, robust relative scoring, and source links for final verification. The full rationale and source list are in [DEAL_CRITERIA.md](DEAL_CRITERIA.md).
 
 ## Test it
 

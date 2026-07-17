@@ -1,7 +1,22 @@
 {
   "checkIntervalHours": 48,
   "alertCooldownHours": 168,
-  "maxSearchesPerRun": 12,
+  "maxSearchesPerRun": 8,
+  "discovery": {
+    "enabled": false,
+    "origin": "JFK",
+    "months": [9, 10, 11, 12],
+    "minTripDays": 2,
+    "maxTripDays": 4,
+    "adults": 1,
+    "currencyCode": "USD",
+    "travelClass": "ECONOMY",
+    "targetRoundTripPrice": 250,
+    "maxDiscoveryPrice": 400,
+    "maxStops": 1,
+    "maxTotalDurationMinutes": 900,
+    "verifyCount": 3
+  },
   "routes": [
     {
       "id": "nyc-lax-flex",

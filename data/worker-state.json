@@ -1,7 +1,11 @@
 {
-  "cursor": 4,
+  "cursor": 6,
   "totalSearches": 644,
   "checkedThisRun": 1,
-  "lastCompletedAt": "2026-07-17T17:13:06.482Z",
+  "discoveryMonthCursor": 1,
+  "exploredMonth": 8,
+  "exploredCandidates": 20,
+  "flexibleDealsChecked": 3,
+  "lastCompletedAt": "2026-07-17T17:37:03.513Z",
   "alerts": {}
 }

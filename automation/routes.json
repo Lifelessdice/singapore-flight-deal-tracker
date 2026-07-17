@@ -1,7 +1,22 @@
 {
   "checkIntervalHours": 48,
   "alertCooldownHours": 168,
-  "maxSearchesPerRun": 12,
+  "maxSearchesPerRun": 8,
+  "discovery": {
+    "enabled": true,
+    "origin": "SIN",
+    "months": [8, 9, 10, 11, 12],
+    "minTripDays": 2,
+    "maxTripDays": 4,
+    "adults": 1,
+    "currencyCode": "USD",
+    "travelClass": "ECONOMY",
+    "targetRoundTripPrice": 160,
+    "maxDiscoveryPrice": 300,
+    "maxStops": 1,
+    "maxTotalDurationMinutes": 900,
+    "verifyCount": 3
+  },
   "routes": [
     {
       "id": "sin-student-budget-aug-dec-2026",
