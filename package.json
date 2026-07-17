@@ -9,6 +9,6 @@
     "check:fares:once": "node --env-file=.env -e \"process.env.MAX_SEARCHES_PER_RUN='1'; process.env.FORCE_RUN='true'; require('./scripts/check-fares.js')\""
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   }
 }
