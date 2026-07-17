@@ -2,6 +2,13 @@
   "checkIntervalHours": 48,
   "alertCooldownHours": 168,
   "maxSearchesPerRun": 8,
+  "traveler": {
+    "passportNationality": "Swiss",
+    "passportCountryCode": "CH",
+    "carryOnBags": 1,
+    "checkedBags": 0,
+    "baggageProfile": "one carry-on backpack"
+  },
   "discovery": {
     "enabled": false,
     "origin": "JFK",

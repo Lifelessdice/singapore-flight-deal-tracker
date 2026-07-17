@@ -96,6 +96,11 @@ function buildSearches(route) {
       maxTotalDurationMinutes: Number(route.maxTotalDurationMinutes) || null,
       maxStops: Number.isFinite(Number(route.maxStops)) ? Number(route.maxStops) : null,
       nonStop: route.nonStop,
+      passportNationality: route.passportNationality || "",
+      passportCountryCode: route.passportCountryCode || "",
+      carryOnBags: Math.max(0, Number(route.carryOnBags) || 0),
+      checkedBags: Math.max(0, Number(route.checkedBags) || 0),
+      baggageProfile: route.baggageProfile || "",
       maxResults: route.maxResultsPerSearch || 5
     }));
 }
@@ -118,6 +123,7 @@ async function searchSerpApi(search) {
   url.searchParams.set("gl", "sg");
   url.searchParams.set("hl", "en");
   url.searchParams.set("show_hidden", "true");
+  if (search.carryOnBags) url.searchParams.set("bags", String(search.carryOnBags));
   if (search.maxStops === 0 || search.nonStop === true) url.searchParams.set("stops", "1");
   if (search.maxStops === 1) url.searchParams.set("stops", "2");
   if (search.maxStops === 2) url.searchParams.set("stops", "3");
@@ -253,6 +259,11 @@ async function searchGoogleTravelExplore(discovery, state, knownDestinations) {
     tripType: "round-trip",
     maxTotalDurationMinutes: Number(discovery.maxTotalDurationMinutes) || null,
     maxStops: Number(discovery.maxStops),
+    passportNationality: discovery.passportNationality || "",
+    passportCountryCode: discovery.passportCountryCode || "",
+    carryOnBags: Math.max(0, Number(discovery.carryOnBags) || 0),
+    checkedBags: Math.max(0, Number(discovery.checkedBags) || 0),
+    baggageProfile: discovery.baggageProfile || "",
     discoveryPrice: Number(destination.flight_price)
   }));
 
@@ -283,7 +294,12 @@ function summarizeCandidate(search, offer, history) {
     destinationName: search.destinationName || null,
     averagePrice: offer.averagePrice || null,
     discountPercentage: offer.discountPercentage || null,
-    notes: `${offer.airlines.join(", ") || "carrier unknown"} via ${offer.source}, ${Math.round(offer.totalDurationMinutes / 60)}h total, ${offer.maxStops} stop${offer.maxStops === 1 ? "" : "s"}`,
+    passportNationality: search.passportNationality || null,
+    passportCountryCode: search.passportCountryCode || null,
+    carryOnBags: search.carryOnBags || 0,
+    checkedBags: search.checkedBags || 0,
+    baggageProfile: search.baggageProfile || null,
+    notes: `${offer.airlines.join(", ") || "carrier unknown"} via ${offer.source}, ${Math.round(offer.totalDurationMinutes / 60)}h total, ${offer.maxStops} stop${offer.maxStops === 1 ? "" : "s"}${search.carryOnBags ? `, price filtered for ${search.carryOnBags} carry-on bag` : ""}`,
     googlePriceInsights: offer.googlePriceInsights
   };
   const routeHistory = history.filter((item) => (
@@ -357,6 +373,14 @@ function formatAlert(candidates) {
     if (insights.savingsVsMedian || insights.savingsVsAverage) {
       lines.push(`Estimated savings: ${entry.currency} ${insights.savingsVsMedian || 0} vs median; ${entry.currency} ${insights.savingsVsAverage || 0} vs average.`);
     }
+    if (entry.passportNationality || entry.baggageProfile) {
+      const travelerDetails = [
+        entry.passportNationality ? `${entry.passportNationality} passport` : "",
+        entry.baggageProfile || "",
+        entry.checkedBags ? `${entry.checkedBags} checked bag${entry.checkedBags === 1 ? "" : "s"}` : "no checked bag"
+      ].filter(Boolean).join("; ");
+      lines.push(`Traveler fit: ${travelerDetails}. Verify current entry and transit rules before booking.`);
+    }
     lines.push(`Trip details: ${entry.notes}.`);
     lines.push(`Google Flights: ${candidate.links.googleFlights}`);
     lines.push(`ITA Matrix: ${candidate.links.itaMatrix}`);
@@ -418,7 +442,10 @@ async function main() {
     return;
   }
 
-  const allSearches = config.routes.flatMap(buildSearches);
+  const allSearches = config.routes.flatMap((route) => buildSearches({
+    ...(config.traveler || {}),
+    ...route
+  }));
   const maxSearchesPerRun = Number(process.env.MAX_SEARCHES_PER_RUN || config.maxSearchesPerRun || 80);
   const discoveryEnabled = Boolean(config.discovery?.enabled)
     && String(process.env.DISCOVERY_ENABLED ?? "true").toLowerCase() !== "false";
@@ -445,7 +472,11 @@ async function main() {
     route.destinationLocationCodes || [route.destinationLocationCode || route.destination]
   )).filter(Boolean));
   const discoveryResult = await searchGoogleTravelExplore(
-    { ...config.discovery, enabled: discoveryEnabled },
+    {
+      ...(config.traveler || {}),
+      ...config.discovery,
+      enabled: discoveryEnabled
+    },
     state,
     knownDestinations
   );

@@ -10,6 +10,8 @@ number.
 | --- | --- |
 | Origin | Singapore Changi (`SIN`) |
 | Passengers | 1 adult |
+| Passport | Swiss (`CH`); alerts still require current entry/transit verification |
+| Baggage | One carry-on backpack, no checked bag |
 | Cabin | Economy |
 | Travel window | August through December 2026 |
 | Trip length | 2 to 4 days |
@@ -24,6 +26,10 @@ number.
 The listed `USD 75` one-way and `USD 160` round-trip figures are useful targets.
 They do not, by themselves, make a fare a deal. The `USD 300` Explore limit is a
 search ceiling that prevents wasting API calls on obviously unsuitable options.
+Exact Google Flights verification uses the one-carry-on bag filter so a basic
+fare that charges for an overhead-bin backpack is less likely to appear as a
+false bargain. Airline size and weight rules still need confirmation before
+booking.
 
 ## What earns an alert
 
@@ -103,15 +109,16 @@ a normal month while gradually building comparable route history.
 - Hidden-city fares are verification candidates only. They should never be used
   with checked baggage or on an itinerary where a later segment must be flown.
 
-## Details still needed
+## Search frequency and quota
 
-Two personal details materially change the definition of a usable steal:
+GitHub Actions wakes once per day, but the worker only performs a scheduled fare
+cycle after approximately 48 hours. Each normal cycle uses up to 12 SerpApi
+searches: one flexible Explore search, three exact verifications, and eight
+rotating route/date searches. That is approximately 180 searches in a 30-day
+month. Manual smoke tests disable Explore and default to one exact search.
 
-1. Passport nationality, so visa and transit feasibility can be evaluated.
-2. Baggage requirement: personal item only, cabin bag, or checked bag.
-
-Until these are supplied, alerts do not claim that a destination is visa-feasible
-and displayed fares may not include the bag needed for the trip.
+Alerts do not claim that a destination is visa-feasible. Entry and transit rules
+can change and must be verified for the Swiss passport before booking.
 
 ## Primary references
 
@@ -135,4 +142,3 @@ and displayed fares may not include the bag needed for the trip.
   <https://github.com/affromero/flight-finder>
 - Flight Analysis:
   <https://github.com/celebi-pkg/flight-analysis>
-

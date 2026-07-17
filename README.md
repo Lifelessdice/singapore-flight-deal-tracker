@@ -159,6 +159,11 @@ Commit the workflow to the repository default branch. GitHub Actions wakes daily
 
 The worker stores its last successful completion time and only spends API searches after roughly 48 hours have elapsed. The daily wake-up avoids the 24-hour month-boundary gap that an every-other-calendar-day cron expression can produce. A manual run from the Actions tab bypasses the interval guard and defaults to one search for quota-safe testing.
 
+A normal scheduled cycle uses up to 12 API searches: one flexible Explore query,
+three exact verifications, and eight rotating exact searches. This is one cycle
+every 48 hours, or approximately 180 SerpApi searches in a 30-day month. Exact
+verification includes the configured carry-on bag count.
+
 ### 5. Verify before booking
 
 When an alert fires, open the included links:
