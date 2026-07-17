@@ -7,6 +7,11 @@ on:
         description: Searches to run during this manual test
         required: false
         default: "1"
+      run_discovery:
+        description: Include flexible destination discovery and exact verification
+        required: false
+        type: boolean
+        default: false
   schedule:
     - cron: "17 6 * * *"
 
@@ -36,7 +41,7 @@ jobs:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' }}
           MAX_SEARCHES_PER_RUN: ${{ inputs.max_searches }}
-          DISCOVERY_ENABLED: ${{ github.event_name != 'workflow_dispatch' }}
+          DISCOVERY_ENABLED: ${{ github.event_name != 'workflow_dispatch' || inputs.run_discovery }}
         run: node scripts/check-fares.js
 
       - name: Commit fare history
