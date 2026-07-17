@@ -1,0 +1,49 @@
+name: Fare check
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_searches:
+        description: Searches to run during this manual test
+        required: false
+        default: "1"
+  schedule:
+    - cron: "17 6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fare-check
+  cancel-in-progress: false
+
+jobs:
+  check-fares:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check fares
+        env:
+          SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+          MAX_SEARCHES_PER_RUN: ${{ inputs.max_searches }}
+        run: node scripts/check-fares.js
+
+      - name: Commit fare history
+        run: |
+          if [ -n "$(git status --porcelain data/fare-history.json data/worker-state.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/fare-history.json data/worker-state.json
+            git commit -m "Update fare tracking state"
+            git push
+          fi

@@ -1,0 +1,14 @@
+{
+  "name": "flight-deal-tracker",
+  "version": "1.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "check": "node --check app.js && node --check fare-insights.js && node --check scripts/check-fares.js && node test/fare-insights.test.js",
+    "check:fares": "node --env-file=.env scripts/check-fares.js",
+    "check:fares:once": "node --env-file=.env -e \"process.env.MAX_SEARCHES_PER_RUN='1'; process.env.FORCE_RUN='true'; require('./scripts/check-fares.js')\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

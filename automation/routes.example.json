@@ -1,0 +1,21 @@
+{
+  "checkIntervalHours": 48,
+  "alertCooldownHours": 168,
+  "maxSearchesPerRun": 12,
+  "routes": [
+    {
+      "id": "nyc-lax-flex",
+      "label": "NYC to Los Angeles flexible weekend",
+      "originLocationCodes": ["JFK", "EWR", "LGA"],
+      "destinationLocationCodes": ["LAX", "BUR", "SNA"],
+      "departureDates": ["2026-09-10", "2026-09-11", "2026-09-12"],
+      "returnDates": ["2026-09-15", "2026-09-16"],
+      "adults": 1,
+      "currencyCode": "USD",
+      "travelClass": "ECONOMY",
+      "maxPrice": 250,
+      "nonStop": false,
+      "maxResultsPerSearch": 3
+    }
+  ]
+}

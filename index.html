@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Flight Deal Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">48-hour fare watch</p>
+        <h1>Flight Deal Tracker</h1>
+      </div>
+      <div class="status-pill" id="notificationStatus">Notifications off</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel search-panel" aria-labelledby="routeFormTitle">
+        <div class="section-head">
+          <div>
+            <h2 id="routeFormTitle">Tracked Route</h2>
+            <p>Add a route, then run the source checks on a 48-hour cadence.</p>
+          </div>
+          <button class="icon-btn" id="notifyBtn" title="Enable browser notifications" aria-label="Enable browser notifications">
+            <span data-lucide="bell"></span>
+          </button>
+        </div>
+
+        <form id="routeForm" class="route-form">
+          <label>
+            Origin
+            <input id="origin" name="origin" maxlength="3" placeholder="JFK" required>
+          </label>
+          <label>
+            Destination
+            <input id="destination" name="destination" maxlength="3" placeholder="LAX" required>
+          </label>
+          <label>
+            Depart
+            <input id="departDate" name="departDate" type="date" required>
+          </label>
+          <label>
+            Return
+            <input id="returnDate" name="returnDate" type="date">
+          </label>
+          <label>
+            Target fare
+            <input id="targetFare" name="targetFare" type="number" min="1" step="1" placeholder="250">
+          </label>
+          <label>
+            Cabin
+            <select id="cabin" name="cabin">
+              <option value="economy">Economy</option>
+              <option value="premium">Premium economy</option>
+              <option value="business">Business</option>
+              <option value="first">First</option>
+            </select>
+          </label>
+          <button class="primary" type="submit">
+            <span data-lucide="plus"></span>
+            Add tracker
+          </button>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="automationTitle">
+        <div class="section-head">
+          <div>
+            <h2 id="automationTitle">Automation Queue</h2>
+            <p>Due routes are checked by opening source searches and logging the observed fare.</p>
+          </div>
+          <button class="secondary" id="checkDueBtn">
+            <span data-lucide="scan-search"></span>
+            Check due
+          </button>
+        </div>
+        <div id="trackerList" class="tracker-list"></div>
+      </section>
+
+      <section class="panel guide" aria-labelledby="guideTitle">
+        <div class="section-head">
+          <div>
+            <h2 id="guideTitle">Alert Setup</h2>
+            <p>Use native alerts first, then a free monitor for pages that support stable watch areas.</p>
+          </div>
+        </div>
+        <ol>
+          <li>Open a route from this tracker and turn on Google Flights price tracking for that exact itinerary or route.</li>
+          <li>Open Skiplagged, sign in, and use its Create a Price Alert control for the same route.</li>
+          <li>Use ITA Matrix as the verification source. It is strong for advanced search syntax, but it does not provide native public price alerts.</li>
+          <li>For a Chrome-based workflow, install Distill Web Monitor, create a monitor from a results page, select the fare area, set the interval to 48 hours, and add an email or desktop notification action.</li>
+          <li>When an alert fires, log the best fare here. The app flags target hits and keeps a history by source.</li>
+        </ol>
+      </section>
+    </main>
+
+    <dialog id="logDialog">
+      <form method="dialog" id="logForm" class="log-form">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow" id="logRouteLabel">Route</p>
+            <h2>Log Fare</h2>
+          </div>
+          <button class="icon-btn" value="cancel" title="Close" aria-label="Close">
+            <span data-lucide="x"></span>
+          </button>
+        </div>
+        <label>
+          Source
+          <select id="logSource" required>
+            <option>Google Flights</option>
+            <option>ITA Matrix</option>
+            <option>Skiplagged</option>
+          </select>
+        </label>
+        <label>
+          Observed fare
+          <input id="logPrice" type="number" min="1" step="1" required>
+        </label>
+        <label>
+          Notes
+          <textarea id="logNotes" rows="3" placeholder="Hidden-city option, exact carrier, stops, baggage caveat"></textarea>
+        </label>
+        <button class="primary" value="default">
+          <span data-lucide="save"></span>
+          Save fare
+        </button>
+      </form>
+    </dialog>
+
+    <script src="fare-insights.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

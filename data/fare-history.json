@@ -1,0 +1,30 @@
+[
+  {
+    "routeId": "sin-student-budget-aug-dec-2026",
+    "source": "Google Flights via SerpApi",
+    "price": 193,
+    "currency": "USD",
+    "origin": "SIN",
+    "destination": "KUL",
+    "departureDate": "2026-08-07",
+    "returnDate": "2026-08-10",
+    "tripType": "round-trip",
+    "loggedAt": 1784307698451,
+    "notes": "Scoot via Google Flights/SerpApi, 1h total, 0 stops",
+    "googlePriceInsights": null
+  },
+  {
+    "routeId": "sin-student-budget-aug-dec-2026",
+    "source": "Google Flights via SerpApi",
+    "price": 117,
+    "currency": "USD",
+    "origin": "SIN",
+    "destination": "KUL",
+    "departureDate": "2026-08-07",
+    "returnDate": "",
+    "tripType": "one-way",
+    "loggedAt": 1784307997107,
+    "notes": "AirAsia via Google Flights/SerpApi, 1h total, 0 stops",
+    "googlePriceInsights": null
+  }
+]
