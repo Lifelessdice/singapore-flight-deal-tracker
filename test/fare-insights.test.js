@@ -3,6 +3,7 @@ const {
   analyzeFareHistory,
   average,
   getLeadTimeBucket,
+  hasSameBaggageProfile,
   median,
   medianAbsoluteDeviation
 } = require("../fare-insights");
@@ -12,6 +13,15 @@ assert.equal(median([100, 300]), 200);
 assert.equal(average([100, 200, 300]), 200);
 assert.equal(medianAbsoluteDeviation([90, 100, 110]), 10);
 assert.equal(getLeadTimeBucket("2026-08-07", Date.parse("2026-07-17T00:00:00Z")), "15-30d");
+assert.equal(hasSameBaggageProfile({}, { carryOnBags: 0, checkedBags: 0 }), true);
+assert.equal(hasSameBaggageProfile(
+  { carryOnBags: 1, checkedBags: 0 },
+  { carryOnBags: 0, checkedBags: 0 }
+), false);
+assert.equal(hasSameBaggageProfile(
+  { carryOnBags: 0, checkedBags: 1 },
+  { carryOnBags: 0, checkedBags: 0 }
+), false);
 
 const targetHit = analyzeFareHistory([
   { source: "Google Flights", price: 320, loggedAt: 1 },

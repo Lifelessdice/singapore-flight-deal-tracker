@@ -1,6 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { analyzeFareHistory, getLeadTimeBucket } = require("../fare-insights");
+const {
+  analyzeFareHistory,
+  getLeadTimeBucket,
+  hasSameBaggageProfile
+} = require("../fare-insights");
 
 const ROOT = path.resolve(__dirname, "..");
 const CONFIG_PATH = path.join(ROOT, "automation", "routes.json");
@@ -305,7 +309,8 @@ function summarizeCandidate(search, offer, history) {
   const routeHistory = history.filter((item) => (
     item.origin === search.origin &&
     item.destination === search.destination &&
-    (item.tripType || (item.returnDate ? "round-trip" : "one-way")) === search.tripType
+    (item.tripType || (item.returnDate ? "round-trip" : "one-way")) === search.tripType &&
+    hasSameBaggageProfile(item, search)
   ));
   const sameLeadTimeHistory = routeHistory.filter((item) => (
     (item.leadTimeBucket || getLeadTimeBucket(item.departureDate, item.loggedAt)) === leadTimeBucket

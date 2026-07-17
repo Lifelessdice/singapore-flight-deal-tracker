@@ -11,7 +11,7 @@ number.
 | Origin | Singapore Changi (`SIN`) |
 | Passengers | 1 adult |
 | Passport | Swiss (`CH`); alerts still require current entry/transit verification |
-| Baggage | One carry-on backpack, no checked bag |
+| Baggage | One free under-seat personal-item backpack; no overhead-bin or checked bag |
 | Cabin | Economy |
 | Travel window | August through December 2026 |
 | Trip length | 2 to 4 days |
@@ -26,9 +26,9 @@ number.
 The listed `USD 75` one-way and `USD 160` round-trip figures are useful targets.
 They do not, by themselves, make a fare a deal. The `USD 300` Explore limit is a
 search ceiling that prevents wasting API calls on obviously unsuitable options.
-Exact Google Flights verification uses the one-carry-on bag filter so a basic
-fare that charges for an overhead-bin backpack is less likely to appear as a
-false bargain. Airline size and weight rules still need confirmation before
+Exact Google Flights verification requests zero carry-on bags because the
+backpack is assumed to fit the airline's free personal-item allowance under the
+seat. Airline personal-item size and weight rules still need confirmation before
 booking.
 
 ## What earns an alert
@@ -119,6 +119,8 @@ month. Manual smoke tests disable Explore and default to one exact search.
 
 Alerts do not claim that a destination is visa-feasible. Entry and transit rules
 can change and must be verified for the Swiss passport before booking.
+Fare-history comparisons also require the same carry-on and checked-bag counts,
+so changing baggage assumptions cannot manufacture an artificial price drop.
 
 ## Primary references
 

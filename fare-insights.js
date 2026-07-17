@@ -42,6 +42,11 @@
     return "121d+";
   }
 
+  function hasSameBaggageProfile(fare, criteria) {
+    return Number(fare?.carryOnBags || 0) === Number(criteria?.carryOnBags || 0) &&
+      Number(fare?.checkedBags || 0) === Number(criteria?.checkedBags || 0);
+  }
+
   function marketContext(latest, marketInsights) {
     const insights = marketInsights || latest?.googlePriceInsights || null;
     const range = Array.isArray(insights?.typical_price_range)
@@ -152,6 +157,7 @@
     analyzeFareHistory,
     average,
     getLeadTimeBucket,
+    hasSameBaggageProfile,
     median,
     medianAbsoluteDeviation
   };

@@ -5,9 +5,9 @@
   "traveler": {
     "passportNationality": "Swiss",
     "passportCountryCode": "CH",
-    "carryOnBags": 1,
+    "carryOnBags": 0,
     "checkedBags": 0,
-    "baggageProfile": "one carry-on backpack"
+    "baggageProfile": "one free under-seat personal-item backpack"
   },
   "discovery": {
     "enabled": false,

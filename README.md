@@ -162,7 +162,8 @@ The worker stores its last successful completion time and only spends API search
 A normal scheduled cycle uses up to 12 API searches: one flexible Explore query,
 three exact verifications, and eight rotating exact searches. This is one cycle
 every 48 hours, or approximately 180 SerpApi searches in a 30-day month. Exact
-verification includes the configured carry-on bag count.
+verification uses the configured bag count, currently a free under-seat
+personal-item backpack with no paid carry-on or checked bag.
 
 ### 5. Verify before booking
 
