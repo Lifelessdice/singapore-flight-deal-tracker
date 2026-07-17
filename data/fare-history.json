@@ -144,5 +144,23 @@
     "discountPercentage": null,
     "notes": "Scoot via Google Flights via SerpApi, 3h total, 0 stops",
     "googlePriceInsights": null
+  },
+  {
+    "routeId": "sin-student-budget-aug-dec-2026",
+    "source": "Google Flights via SerpApi",
+    "price": 341,
+    "currency": "USD",
+    "origin": "SIN",
+    "destination": "DMK",
+    "departureDate": "2026-08-07",
+    "returnDate": "2026-08-10",
+    "tripType": "round-trip",
+    "loggedAt": 1784311174973,
+    "leadTimeBucket": "15-30d",
+    "destinationName": null,
+    "averagePrice": null,
+    "discountPercentage": null,
+    "notes": "Thai AirAsia via Google Flights via SerpApi, 3h total, 0 stops",
+    "googlePriceInsights": null
   }
 ]
