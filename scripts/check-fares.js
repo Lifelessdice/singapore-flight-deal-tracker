@@ -493,8 +493,16 @@ async function main() {
   if (alertCandidates.length) {
     const message = formatAlert(alertCandidates);
     console.log(message);
-    await sendDiscord(message);
-    await sendResend(message);
+    const deliveries = await Promise.allSettled([
+      sendDiscord(message),
+      sendResend(message)
+    ]);
+    const deliveryFailures = deliveries
+      .filter((delivery) => delivery.status === "rejected")
+      .map((delivery) => delivery.reason?.message || String(delivery.reason));
+    if (deliveryFailures.length) {
+      throw new Error(`Alert delivery failed: ${deliveryFailures.join("; ")}`);
+    }
     alertCandidates.forEach((candidate) => {
       alerts[alertKey(candidate)] = {
         price: candidate.entry.price,
@@ -502,7 +510,10 @@ async function main() {
       };
     });
   } else {
-    console.log(`Checked ${candidates.length} live fare candidates, including flexible discovery. No new relative deals found.`);
+    const discoveryNote = discoveryResult.searches.length
+      ? ", including flexible discovery"
+      : "";
+    console.log(`Checked ${candidates.length} live fare candidates${discoveryNote}. No new relative deals found.`);
   }
 
   writeJson(STATE_PATH, {
