@@ -6,7 +6,11 @@
   "exactSearchHorizonDays": 90,
   "oneWaySearchShare": 0.25,
   "returnVerification": {
-    "maxPerRun": 3
+    "maxPerRun": 1
+  },
+  "quota": {
+    "reserveSearches": 10,
+    "maxCallsPerCycle": 14
   },
   "splitTickets": {
     "enabled": true,
@@ -24,34 +28,77 @@
     "baggageProfile": "one free under-seat personal-item backpack"
   },
   "discovery": {
-    "enabled": false,
-    "origin": "JFK",
-    "months": [9, 10, 11, 12],
+    "enabled": true,
+    "origin": "SIN",
+    "months": [8, 9, 10, 11, 12],
     "minTripDays": 2,
     "maxTripDays": 4,
     "adults": 1,
     "currencyCode": "USD",
     "travelClass": "ECONOMY",
-    "targetRoundTripPrice": 250,
-    "maxDiscoveryPrice": 400,
+    "targetRoundTripPrice": 160,
+    "maxDiscoveryPrice": 300,
     "maxStops": 1,
     "maxTotalDurationMinutes": 900,
     "verifyCount": 3
   },
+  "constructions": {
+    "enabled": true,
+    "targetRoundTripPrice": 160,
+    "airportGroups": [
+      {
+        "id": "bangkok-any",
+        "label": "Bangkok via BKK or DMK",
+        "airports": ["BKK", "DMK"]
+      }
+    ],
+    "openJaws": [
+      {
+        "id": "malaysia-west-coast",
+        "label": "Kuala Lumpur and Penang",
+        "outboundDestination": "KUL",
+        "inboundOrigin": "PEN",
+        "targetRoundTripPrice": 160
+      }
+    ]
+  },
+  "promotionMonitoring": {
+    "enabled": true,
+    "keywords": ["Singapore", "sale", "promo", "% off", "from SGD"],
+    "sources": [
+      {
+        "id": "airasia-sg",
+        "label": "AirAsia Singapore promotions",
+        "url": "https://www.airasia.com/promotions/sg/"
+      },
+      {
+        "id": "scoot-deals",
+        "label": "Scoot travel deals",
+        "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals"
+      }
+    ]
+  },
   "routes": [
     {
-      "id": "nyc-lax-flex",
-      "label": "NYC to Los Angeles flexible weekend",
-      "originLocationCodes": ["JFK", "EWR", "LGA"],
-      "destinationLocationCodes": ["LAX", "BUR", "SNA"],
-      "departureDates": ["2026-09-10", "2026-09-11", "2026-09-12"],
-      "returnDates": ["2026-09-15", "2026-09-16"],
+      "id": "sin-student-budget-example",
+      "label": "Singapore exchange budget trips",
+      "originLocationCodes": ["SIN"],
+      "destinationLocationCodes": ["KUL", "PEN", "BKK", "DMK"],
+      "departureDates": ["2026-09-04", "2026-09-08", "2026-09-11"],
+      "returnDates": ["2026-09-07", "2026-09-10", "2026-09-14"],
       "adults": 1,
       "currencyCode": "USD",
       "travelClass": "ECONOMY",
-      "maxPrice": 250,
+      "includeOneWay": true,
+      "maxOneWayPrice": 75,
+      "maxRoundTripPrice": 160,
+      "maxPrice": 160,
       "nonStop": false,
-      "maxResultsPerSearch": 3
+      "maxStops": 1,
+      "maxTotalDurationMinutes": 900,
+      "minTripDays": 2,
+      "maxTripDays": 4,
+      "maxResultsPerSearch": 5
     }
   ]
 }

@@ -19,9 +19,10 @@ number.
 | Ticket types | Round trips and one ways |
 | Stops | At most 1 |
 | Duration | At most 15 hours per direction |
-| Listed destinations | 14 nearby Asian airports |
+| Listed destinations | 14 nearby Asian airports plus rotating grouped-airport searches |
 | Open-ended discovery | Google Travel Explore searches every configured month |
 | Discovery verification | The three most useful Explore results are re-priced as exact Google Flights searches |
+| Alternative construction | Rotating nearby-airport groups and open-jaw one-way pairs |
 
 The listed `USD 75` one-way and `USD 160` round-trip figures are useful targets.
 They do not, by themselves, make a fare a deal. The `USD 300` Explore limit is a
@@ -76,13 +77,14 @@ a different itinerary than the one ultimately booked.
 SerpApi's first round-trip response describes the outbound selection. Before a
 round-trip price signal can alert, the worker follows its `departure_token` and
 requires a compatible return to pass the stop and duration rules without a
-self-transfer or airport change. At most three such calls are spent per cycle,
+self-transfer or airport change. At most one such call is reserved per cycle,
 and unverified returns are suppressed.
 
 The normal queue prioritizes routes that have been checked least recently, then
-rotates their exact dates inside a 90-day booking horizon. Six of the eight slots
-normally check returns and two check one ways. This replaces a sequential
-644-search rotation that could not revisit every destination promptly enough.
+rotates exact dates inside a 90-day booking horizon. Construction and return
+verification reserves leave up to five routine exact slots in a full scheduled
+cycle. Coverage is recorded from actual requests, including successful searches
+that return no offers.
 
 For the cheapest verified flexible trip, the worker also prices the outbound and
 return as independent one-way tickets. The split option qualifies only when it
@@ -90,6 +92,17 @@ saves at least both `USD 15` and 10% against the exact same-run return fare.
 Savings of at least `USD 30` and 20% form a strong deal. Because the tickets are
 for opposite travel days rather than a self-connection, a delayed outbound does
 not create a missed-connection risk on the return.
+
+One rotating construction lane also checks grouped destination airports such as
+`BKK,DMK`, or prices an open jaw such as `SIN-KUL` plus `PEN-SIN`. These strategies
+have separate history and confidence. Open-jaw ground transport is not included,
+so it is disclosed as a material tradeoff and cannot raise statistical confidence.
+
+The traveler-value score ranks already observed fares from 0 to 100 and emits a
+`BOOK`, `VERIFY`, `WATCH`, or `SKIP` action. It rewards relative anomaly strength,
+external evidence, target fit, and weekend timing, while penalizing duration,
+stops, overnights, incomplete one ways, separate bookings, transfers, and
+unconfirmed baggage. The score cannot turn a mere target hit into a deal.
 
 ## Research decisions
 
@@ -146,13 +159,13 @@ not create a missed-connection risk on the return.
 ## Search frequency and quota
 
 GitHub Actions wakes once per day, but the worker only performs a scheduled fare
-cycle after approximately 48 hours. Each normal no-deal cycle uses up to 14 SerpApi
-searches: one flexible Explore search, three exact verifications, two split-ticket
-checks, and eight prioritized route/date searches. That is approximately 210
-searches in a 30-day month, leaving about 40 of the current 250 free searches for
-manual QA and selective return resolution. A cycle with alertable returns can
-spend up to three of those reserve calls. Manual smoke tests disable Explore and
-default to one exact search.
+cycle after approximately 48 hours. Every billable request uses one global guard
+with a maximum of 14 attempts per cycle. The normal maximum allocation is one
+Explore request, three Explore verifications, two split-ticket requests, five
+exact searches, two construction requests, and one return verification. The
+worker reads the free SerpApi Account API before and after each run and protects a
+10-credit reserve. Manual smoke tests disable Explore and constructions, default
+to one exact search, and do not change scheduled cadence.
 
 Alerts do not claim that a destination is visa-feasible. Entry and transit rules
 can change and must be verified for the Swiss passport before booking.
@@ -177,6 +190,8 @@ so changing baggage assumptions cannot manufacture an artificial price drop.
   <https://serpapi.com/google-travel-explore-api>
 - SerpApi Google Flights return tokens, price insights, and deep search:
   <https://serpapi.com/google-flights-api>
+- SerpApi Account API:
+  <https://serpapi.com/account-api>
 - FlightClaw:
   <https://github.com/jackculpan/flightclaw>
 - Flight Finder:

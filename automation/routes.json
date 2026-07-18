@@ -6,7 +6,11 @@
   "exactSearchHorizonDays": 90,
   "oneWaySearchShare": 0.25,
   "returnVerification": {
-    "maxPerRun": 3
+    "maxPerRun": 1
+  },
+  "quota": {
+    "reserveSearches": 10,
+    "maxCallsPerCycle": 14
   },
   "splitTickets": {
     "enabled": true,
@@ -22,6 +26,52 @@
     "carryOnBags": 0,
     "checkedBags": 0,
     "baggageProfile": "one free under-seat personal-item backpack"
+  },
+  "constructions": {
+    "enabled": true,
+    "targetRoundTripPrice": 160,
+    "airportGroups": [
+      {
+        "id": "bangkok-any",
+        "label": "Bangkok via BKK or DMK",
+        "airports": ["BKK", "DMK"]
+      },
+      {
+        "id": "manila-any",
+        "label": "Manila via MNL or CRK",
+        "airports": ["MNL", "CRK"]
+      },
+      {
+        "id": "kuala-lumpur-any",
+        "label": "Kuala Lumpur via KUL or SZB",
+        "airports": ["KUL", "SZB"]
+      }
+    ],
+    "openJaws": [
+      {
+        "id": "malaysia-west-coast",
+        "label": "Kuala Lumpur and Penang",
+        "outboundDestination": "KUL",
+        "inboundOrigin": "PEN",
+        "targetRoundTripPrice": 160
+      }
+    ]
+  },
+  "promotionMonitoring": {
+    "enabled": true,
+    "keywords": ["Singapore", "sale", "promo", "% off", "from SGD"],
+    "sources": [
+      {
+        "id": "airasia-sg",
+        "label": "AirAsia Singapore promotions",
+        "url": "https://www.airasia.com/promotions/sg/"
+      },
+      {
+        "id": "scoot-deals",
+        "label": "Scoot travel deals",
+        "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals"
+      }
+    ]
   },
   "discovery": {
     "enabled": true,

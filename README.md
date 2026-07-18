@@ -1,10 +1,10 @@
 # Flight Deal Tracker
 
-A local browser-based tracker for comparing Google Flights, ITA Matrix, and Skiplagged on a 48-hour cadence.
+A 48-hour flight-deal worker and local review dashboard for a budget student based in Singapore.
 
 This project does not scrape flight sites or bypass their controls. Flight pages are dynamic, account-aware, and often protected by site terms. The app opens the correct sources, stores your observed fares locally, tracks target-price hits, and reminds you when the next manual or browser-assisted check is due.
 
-For true background checks, use the included GitHub Actions worker. It runs while your browser is closed, queries SerpApi's Google Flights API for live fare candidates, preserves fare history and queue position in the repo, and sends alerts with verification links for Google Flights, ITA Matrix, and Skiplagged. ITA Matrix and Skiplagged are not scraped automatically; they are used to verify candidates and look for alternate or hidden-city constructions.
+For true background checks, use the included GitHub Actions worker. It runs while your browser is closed, queries SerpApi's Google Travel Explore and Google Flights engines, preserves fare history and coverage in the repo, and sends Discord alerts with verification links. ITA Matrix and Skiplagged are not scraped automatically.
 
 ## Run it
 
@@ -67,6 +67,8 @@ Each alert includes:
 - Google's online price-history sample count and median when returned
 - the exact external evidence used for the confidence label
 - outbound and return verification status for round trips
+- a traveler-value score and `BOOK`, `VERIFY`, `WATCH`, or `SKIP` action
+- practical tradeoffs such as weekday timing, stops, baggage uncertainty, or separate tickets
 
 ## Native alert setup
 
@@ -134,7 +136,7 @@ SERPAPI_API_KEY
 
 The worker uses Google Travel Explore to discover short trips across configured months, then verifies promising results with exact `engine=google_flights` searches. It enables SerpApi `deep_search` for browser-parity Google results, sorts by price, allows Google's expanded "View more flights" results, limits stops and duration, and rotates through searches so the free tier is not burned too quickly.
 
-### 3. Add a free alert channel
+### 3. Add Discord alerts
 
 For Discord alerts, add:
 
@@ -142,18 +144,7 @@ For Discord alerts, add:
 DISCORD_WEBHOOK_URL
 ```
 
-For email alerts with Resend, add:
-
-```text
-RESEND_API_KEY
-ALERT_EMAIL_FROM
-ALERT_EMAIL_TO
-```
-
-Discord is the easiest free setup. Resend works well if you already have a verified sender domain or are using their allowed onboarding sender.
-The cloud workflow checks Resend's delivery status after each send. Manual email
-tests fail unless the recipient server confirms delivery; scheduled fare checks
-keep Discord and fare-history updates working while logging an email warning.
+Discord is the sole production notification channel. Email delivery is disabled.
 
 ### 4. Enable the scheduled workflow
 
@@ -165,20 +156,19 @@ Commit the workflow to the repository default branch. GitHub Actions wakes daily
 
 The worker stores its last successful completion time and only spends API searches after roughly 48 hours have elapsed. The daily wake-up avoids the 24-hour month-boundary gap that an every-other-calendar-day cron expression can produce. A manual run from the Actions tab bypasses the interval guard and defaults to one search for quota-safe testing.
 
-A normal no-deal scheduled cycle uses up to 14 API searches: one flexible Explore query,
-three exact verifications, two checks that compare a return against separate
-outbound/return tickets, and eight prioritized exact searches. This is one cycle
-every 48 hours, or approximately 210 SerpApi searches in a 30-day month. Exact
-verification uses the configured bag count, currently a free under-seat
-personal-item backpack with no paid carry-on or checked bag. If a round trip is
-about to alert, the worker can spend up to three additional calls to resolve the
-compatible return with SerpApi's `departure_token`; unverified or unsafe returns
-are suppressed instead of being sent.
+A scheduled cycle has a hard 14-request cap across every billable lane. Its normal
+plan is one Explore query, up to three Explore verifications, two split-ticket
+checks, five prioritized exact searches, up to two nearby-airport/open-jaw
+construction calls, and one reserved return verification. Actual use can be
+lower. The free SerpApi Account API supplies the current balance, and the worker
+protects a 10-credit reserve rather than assuming a fixed monthly allowance.
+Exact searches request zero paid carry-on and checked bags; the free personal-item
+allowance remains unconfirmed unless returned fare notes explicitly establish it.
 
 The exact-search queue favors destinations checked least recently and dates
-inside the next 90 days. Its normal allocation is six return searches and two
-one-way searches. This gives every destination fresh coverage instead of walking
-sequentially through all 644 route/date combinations.
+inside the next 90 days, with both returns and one ways. Coverage records attempts,
+successful empty responses, offers, and failures instead of inferring checks from
+fare history.
 
 After every completed search cycle, the worker sends either a deal alert or a
 no-deal heartbeat to every configured channel. The heartbeat reports how many
@@ -188,9 +178,16 @@ details, historical and Google-market analysis, the specific reason it did not
 trigger, and a Google Flights verification link. Daily workflow wake-ups skipped
 by the 48-hour guard do not send a notification.
 
+The worker also rotates grouped nearby-airport searches and open jaws. Open-jaw
+prices exclude travel between the two destination cities and say so explicitly.
+Official AirAsia and Scoot promotion pages are monitored for changes; those
+changes are leads that still require a live Google Flights comparison.
+
 The worker treats a complete provider failure as an incomplete check, sends an
 error notification, fails the workflow, and does not advance the successful
-completion timestamp. Partial provider failures are disclosed in the heartbeat.
+completion timestamp. Search state is persisted before Discord delivery, so an
+alert-channel failure cannot erase credits already spent. Manual smoke runs do
+not postpone the next scheduled cycle.
 
 ### 5. Verify before booking
 
@@ -225,14 +222,15 @@ The included scheduled worker takes the safer production path: API-backed fare c
 
 ## Test it
 
-Run:
+Run the complete offline suite:
 
 ```powershell
-node --check app.js
-node --check fare-insights.js
-node --check scripts/check-fares.js
-node test/fare-insights.test.js
+npm run check
 ```
+
+Operational and handoff documentation is in [AGENTS.md](AGENTS.md),
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and
+[docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Sources checked while building
 

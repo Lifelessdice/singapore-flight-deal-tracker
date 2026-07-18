@@ -5,6 +5,14 @@ const {
   getLeadTimeBucket,
   hasSameBaggageProfile
 } = require("../fare-insights");
+const {
+  buildConstructionLane,
+  buildQuotaSnapshot,
+  checkPromotionSources,
+  scoreTravelerValue,
+  summarizeCoverage,
+  updateCoverage
+} = require("../tracker-product");
 
 const ROOT = path.resolve(__dirname, "..");
 const CONFIG_PATH = path.join(ROOT, "automation", "routes.json");
@@ -243,6 +251,8 @@ function mapSerpApiOffer(offer, search, priceInsights) {
     totalDurationMinutes: Number(offer.total_duration) || 0,
     maxStops: layovers.length,
     airlines: [...new Set(flights.map((flight) => flight.airline).filter(Boolean))],
+    resolvedOrigin: flights[0]?.departureAirport || search.origin,
+    resolvedDestination: flights.at(-1)?.arrivalAirport || search.destination,
     flights,
     layovers,
     maxLayoverMinutes: layovers.reduce(
@@ -306,6 +316,7 @@ async function searchSerpApi(search, options = {}) {
   const offers = rawFlights
     .map((offer) => mapSerpApiOffer(offer, search, data.price_insights))
     .filter((offer) => Number.isFinite(offer.price))
+    .filter((offer) => !offer.hasSelfTransfer && !offer.hasAirportChange)
     .filter((offer) => !search.maxTotalDurationMinutes || offer.totalDurationMinutes <= search.maxTotalDurationMinutes)
     .filter((offer) => search.maxStops === null || offer.maxStops <= search.maxStops);
 
@@ -358,6 +369,28 @@ function combineRoundTripOffers(outboundOffer, returnOffer) {
     bookingToken: returnOffer.bookingToken,
     verifiedRoundTrip: true
   };
+}
+
+async function getSerpApiAccount() {
+  assertEnv("SERPAPI_API_KEY");
+  try {
+    const url = new URL("https://serpapi.com/account.json");
+    url.searchParams.set("api_key", process.env.SERPAPI_API_KEY);
+    const response = await fetch(url);
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: `SerpApi account lookup failed: ${response.status} ${await response.text()}`
+      };
+    }
+    const account = await response.json();
+    if (account.error) {
+      return { ok: false, error: `SerpApi account error: ${account.error}` };
+    }
+    return { ok: true, account };
+  } catch (error) {
+    return { ok: false, error: `SerpApi account lookup failed: ${error.message}` };
+  }
 }
 
 async function searchGoogleTravelExplore(discovery, state, knownDestinations) {
@@ -499,11 +532,14 @@ function summarizeCandidate(search, offer, history) {
     source: offer.source,
     price: offer.price,
     currency: offer.currency,
-    origin: search.origin,
-    destination: search.destination,
+    origin: offer.resolvedOrigin || search.origin,
+    destination: offer.resolvedDestination || search.destination,
+    searchedOrigin: search.origin,
+    searchedDestination: search.destination,
     departureDate: search.departureDate,
     returnDate: search.returnDate,
     tripType: search.tripType,
+    searchStrategy: search.searchStrategy || "standard",
     loggedAt,
     leadTimeBucket,
     tripLengthDays,
@@ -516,17 +552,22 @@ function summarizeCandidate(search, offer, history) {
     carryOnBags: search.carryOnBags || 0,
     checkedBags: search.checkedBags || 0,
     baggageProfile: search.baggageProfile || null,
+    maxStops: offer.maxStops,
     returnVerified: Boolean(offer.verifiedRoundTrip),
     notes: `${offer.airlines.join(", ") || "carrier unknown"} via ${offer.source}, ${durationDescription}, maximum ${offer.maxStops} stop${offer.maxStops === 1 ? "" : "s"} per direction, ${baggageDescription}`,
     googlePriceInsights: offer.googlePriceInsights
   };
-  const routeHistory = history.filter((item) => (
-    item.origin === search.origin &&
-    item.destination === search.destination &&
-    (item.tripType || (item.returnDate ? "round-trip" : "one-way")) === search.tripType &&
-    hasSameBaggageProfile(item, search) &&
-    (item.searchStrategy || "standard") === (search.searchStrategy || "standard")
-  ));
+  const routeHistory = history.filter((item) => {
+    const sameRoute = search.searchStrategy
+      ? item.routeId === search.routeId
+      : item.origin === search.origin && item.destination === search.destination;
+    return (
+      sameRoute &&
+      (item.tripType || (item.returnDate ? "round-trip" : "one-way")) === search.tripType &&
+      hasSameBaggageProfile(item, search) &&
+      (item.searchStrategy || "standard") === (search.searchStrategy || "standard")
+    );
+  });
   const comparisonHistory = routeHistory.filter((item) => {
     const itemDepartureDay = new Date(`${item.departureDate}T00:00:00Z`).getUTCDay();
     const itemWeekendDeparture = item.weekendDeparture ??
@@ -552,7 +593,7 @@ function summarizeCandidate(search, offer, history) {
     marketInsights: offer.googlePriceInsights
   });
 
-  return {
+  const candidate = {
     entry,
     insights: {
       ...insights,
@@ -566,6 +607,8 @@ function summarizeCandidate(search, offer, history) {
       skiplagged: getSkiplaggedUrl(search)
     }
   };
+  candidate.value = scoreTravelerValue(candidate);
+  return candidate;
 }
 
 function summarizeSplitTicketCandidate(
@@ -638,6 +681,64 @@ function summarizeSplitTicketCandidate(
   candidate.insights.strategyQualifies = qualifies;
   candidate.insights.strategySavings = savings;
   candidate.insights.strategySavingsPercent = savingsPercent;
+  candidate.value = scoreTravelerValue(candidate);
+  return candidate;
+}
+
+function summarizeOpenJawCandidate(
+  referenceSearch,
+  definition,
+  outboundOffer,
+  inboundOffer,
+  history
+) {
+  const combinedOffer = {
+    source: "Open-jaw one-way combination via Google Flights",
+    price: outboundOffer.price + inboundOffer.price,
+    currency: referenceSearch.currencyCode,
+    totalDurationMinutes: outboundOffer.totalDurationMinutes + inboundOffer.totalDurationMinutes,
+    outboundDurationMinutes: outboundOffer.totalDurationMinutes,
+    returnDurationMinutes: inboundOffer.totalDurationMinutes,
+    maxStops: Math.max(outboundOffer.maxStops, inboundOffer.maxStops),
+    airlines: [...new Set([...outboundOffer.airlines, ...inboundOffer.airlines])],
+    baggageNotes: [...new Set([
+      ...(outboundOffer.baggageNotes || []),
+      ...(inboundOffer.baggageNotes || [])
+    ])],
+    hasOvernight: outboundOffer.hasOvernight || inboundOffer.hasOvernight,
+    hasSelfTransfer: false,
+    hasAirportChange: false,
+    verifiedRoundTrip: true,
+    resolvedOrigin: referenceSearch.origin,
+    resolvedDestination: `${definition.outboundDestination}/${definition.inboundOrigin}`,
+    googlePriceInsights: null
+  };
+  const pseudoSearch = {
+    ...referenceSearch,
+    routeId: `construction-${definition.id}`,
+    destination: `${definition.outboundDestination}/${definition.inboundOrigin}`,
+    destinationName: definition.label,
+    searchStrategy: "open-jaw",
+    maxPrice: Number(definition.targetRoundTripPrice || referenceSearch.maxPrice) || null
+  };
+  const candidate = summarizeCandidate(pseudoSearch, combinedOffer, history);
+  candidate.entry.searchStrategy = "open-jaw";
+  candidate.entry.outboundDestination = definition.outboundDestination;
+  candidate.entry.inboundOrigin = definition.inboundOrigin;
+  candidate.entry.notes = `${outboundOffer.airlines.join(", ") || "unknown carrier"} from ${referenceSearch.origin} to ${definition.outboundDestination}, then ${inboundOffer.airlines.join(", ") || "unknown carrier"} from ${definition.inboundOrigin} to ${referenceSearch.origin}; ${Math.round(outboundOffer.totalDurationMinutes / 60)}h outbound and ${Math.round(inboundOffer.totalDurationMinutes / 60)}h return-side flight. Ground transport between ${definition.outboundDestination} and ${definition.inboundOrigin} is not included`;
+  candidate.links.outboundGoogleFlights = getGoogleFlightsUrl({
+    ...referenceSearch,
+    destination: definition.outboundDestination,
+    returnDate: ""
+  });
+  candidate.links.inboundGoogleFlights = getGoogleFlightsUrl({
+    ...referenceSearch,
+    origin: definition.inboundOrigin,
+    destination: referenceSearch.origin,
+    departureDate: referenceSearch.returnDate,
+    returnDate: ""
+  });
+  candidate.value = scoreTravelerValue(candidate);
   return candidate;
 }
 
@@ -682,6 +783,15 @@ function formatAlert(candidates) {
 
     lines.push(`${entry.origin} -> ${entry.destination} ${formatTravelDate(entry.departureDate)}${entry.returnDate ? ` to ${formatTravelDate(entry.returnDate)}` : ""}`);
     lines.push(`${entry.currency} ${entry.price} | ${entry.tripType} | ${insights.level} | confidence ${insights.confidence}`);
+    if (candidate.value) {
+      lines.push(`Decision: ${candidate.value.action} | traveler value ${candidate.value.score}/100.`);
+      if (candidate.value.reasons.length) {
+        lines.push(`Why it stands out: ${candidate.value.reasons.join("; ")}.`);
+      }
+      if (candidate.value.risks.length) {
+        lines.push(`Tradeoffs: ${candidate.value.risks.join("; ")}.`);
+      }
+    }
     lines.push(`Confidence basis: ${insights.confidenceBasis || "external market evidence unavailable"}.`);
     lines.push(`Analysis: ${medianDelta}; ${averageDelta}; ${marketDelta}; baseline ${insights.baselineScope}; ${insights.baselineSampleCount} independent prior days.`);
     if (insights.marketPriceHistorySampleCount) {
@@ -703,7 +813,10 @@ function formatAlert(candidates) {
         `Split-ticket advantage: ${entry.currency} ${entry.strategySavings} (${entry.strategySavingsPercent}%) below the same-run round-trip fare of ${entry.currency} ${entry.roundTripComparisonPrice}. These are independent outbound and return bookings.`
       );
     }
-    if (entry.tripType === "round-trip" && entry.searchStrategy !== "split-one-ways") {
+    if (
+      entry.tripType === "round-trip" &&
+      !["split-one-ways", "open-jaw"].includes(entry.searchStrategy)
+    ) {
       lines.push(
         entry.returnVerified
           ? "Itinerary check: both outbound and return passed the configured duration, stop, airport-change, and self-transfer checks."
@@ -830,6 +943,28 @@ function formatNoDealSummary(candidates, options = {}) {
       `Provider health: ${options.providerStats.successful} Google Flights requests succeeded and ${options.providerStats.failed} failed; this was a partial check.`
     );
   }
+  if (options.providerStats) {
+    const quota = options.quota || {};
+    const remaining = Number.isFinite(quota.remaining)
+      ? `${quota.remaining} credits remained before this run`
+      : "provider balance unavailable";
+    lines.push(
+      `Search usage: ${options.providerStats.attempted} attempted, ${options.providerStats.successful} succeeded, ${options.providerStats.skipped || 0} skipped; ${remaining}.`
+    );
+  }
+  if (options.coverage) {
+    lines.push(
+      `Coverage: ${options.coverage.recentlyCoveredSearches}/${options.coverage.eligibleSearches} eligible exact searches attempted in the last ${options.coverage.recentDays} days (${options.coverage.coveragePercent}%).`
+    );
+  }
+  if (options.constructionSummary) {
+    lines.push(`Alternative construction: ${options.constructionSummary}.`);
+  }
+  if (options.promotionResult) {
+    lines.push(
+      `Promotion watch: checked ${options.promotionResult.checked} official airline page${options.promotionResult.checked === 1 ? "" : "s"}; ${options.promotionResult.changed.length} changed since the previous check.`
+    );
+  }
   (options.splitComparisons || []).forEach((comparison) => {
     const difference = Math.abs(comparison.roundTripPrice - comparison.splitPrice);
     const winner = comparison.splitPrice < comparison.roundTripPrice
@@ -846,10 +981,14 @@ function formatNoDealSummary(candidates, options = {}) {
 
   if (cheapest.length) {
     lines.push("", "Cheapest observed (not deal alerts):");
-    cheapest.forEach(({ entry, insights, links }, index) => {
+    cheapest.forEach(({ entry, insights, links, value }, index) => {
       const dates = `${formatTravelDate(entry.departureDate)}${entry.returnDate ? ` to ${formatTravelDate(entry.returnDate)}` : ""}`;
       lines.push(`${index + 1}. ${entry.origin} -> ${entry.destination} | ${dates} | ${entry.currency} ${entry.price} ${entry.tripType}`);
       if (entry.notes) lines.push(`Flight: ${entry.notes}.`);
+      if (value) {
+        lines.push(`Decision: ${value.action} | traveler value ${value.score}/100.`);
+        if (value.risks.length) lines.push(`Tradeoffs: ${value.risks.join("; ")}.`);
+      }
       lines.push(`Analysis: ${formatHistoryAnalysis(entry, insights)}.`);
       lines.push(`Why no alert: ${explainNoDeal(insights, entry)}.`);
       if (entry.verificationError) {
@@ -873,116 +1012,58 @@ function formatNoDealSummary(candidates, options = {}) {
   return lines.join("\n");
 }
 
+function formatPromotionUpdate(promotionResult) {
+  const lines = [
+    "Airline promotion pages changed",
+    "",
+    "These are leads, not verified fare deals. Check the linked offer and compare it with Google Flights before booking."
+  ];
+  promotionResult.changed.forEach((promotion) => {
+    lines.push("", `${promotion.label}: ${promotion.snippet}`, promotion.url);
+  });
+  return lines.join("\n");
+}
+
 async function sendDiscord(message) {
   if (!process.env.DISCORD_WEBHOOK_URL) return;
 
-  const response = await fetch(process.env.DISCORD_WEBHOOK_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: message.slice(0, 1900) })
-  });
+  const chunks = [];
+  let current = "";
+  for (const line of String(message).split("\n")) {
+    const addition = `${current ? "\n" : ""}${line}`;
+    if (current && current.length + addition.length > 1900) {
+      chunks.push(current);
+      current = line;
+    } else if (!current && line.length > 1900) {
+      chunks.push(line.slice(0, 1900));
+      current = line.slice(1900);
+    } else {
+      current += addition;
+    }
+  }
+  if (current) chunks.push(current);
 
-  if (!response.ok) {
-    throw new Error(`Discord alert failed: ${response.status} ${await response.text()}`);
+  for (const content of chunks) {
+    const response = await fetch(process.env.DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content })
+    });
+    if (!response.ok) {
+      throw new Error(`Discord alert failed: ${response.status} ${await response.text()}`);
+    }
   }
 }
 
-async function sendResend(message, subject) {
-  if (!process.env.RESEND_API_KEY || !process.env.ALERT_EMAIL_TO || !process.env.ALERT_EMAIL_FROM) return;
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from: process.env.ALERT_EMAIL_FROM,
-      to: [process.env.ALERT_EMAIL_TO],
-      subject,
-      text: message
-    })
-  });
-
-  const responseBody = await response.text();
-  if (!response.ok) {
-    throw new Error(`Resend alert failed: ${response.status} ${responseBody}`);
-  }
-
-  const sent = JSON.parse(responseBody);
-  if (!sent.id) {
-    throw new Error("Resend accepted the request without returning an email ID.");
-  }
-  const maskedRecipients = String(process.env.ALERT_EMAIL_TO)
-    .split(",")
-    .map((recipient) => {
-      const [localPart, domain] = recipient.trim().split("@");
-      return domain ? `${localPart.slice(0, 2)}***@${domain}` : "***";
-    });
-  console.log(
-    `Resend accepted email ${sent.id} for ${maskedRecipients.join(", ")}; checking delivery.`
-  );
-
-  const requireDelivery =
-    String(process.env.REQUIRE_EMAIL_DELIVERY).toLowerCase() === "true";
-  const deliveryAttempts = requireDelivery ? 60 : 5;
-  let lastEvent = "sent";
-  for (let attempt = 0; attempt < deliveryAttempts; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const statusResponse = await fetch(`https://api.resend.com/emails/${sent.id}`, {
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`
-      }
-    });
-    if (!statusResponse.ok) continue;
-    const status = await statusResponse.json();
-    lastEvent = String(status.last_event || lastEvent).toLowerCase();
-    if (lastEvent === "delivered") {
-      const domains = (status.to || [process.env.ALERT_EMAIL_TO])
-        .map((recipient) => String(recipient).split("@").at(-1))
-        .filter(Boolean);
-      console.log(
-        `Resend confirmed email delivery to ${[...new Set(domains)].join(", ")}.`
-      );
-      return;
-    }
-    if (["bounced", "failed", "suppressed", "complained"].includes(lastEvent)) {
-      throw new Error(`Resend email delivery ended with status: ${lastEvent}.`);
-    }
-  }
-
-  if (requireDelivery) {
-    throw new Error(
-      `Resend did not confirm recipient-server delivery within 120 seconds; last event: ${lastEvent}; email ID: ${sent.id}.`
-    );
-  }
-  console.warn(`Resend accepted the email; latest delivery event: ${lastEvent}.`);
-}
-
-async function deliverNotifications(message, subject) {
-  const deliveryTasks = [];
-  if (process.env.DISCORD_WEBHOOK_URL) deliveryTasks.push(sendDiscord(message));
-  if (
-    process.env.RESEND_API_KEY &&
-    process.env.ALERT_EMAIL_TO &&
-    process.env.ALERT_EMAIL_FROM
-  ) {
-    deliveryTasks.push(sendResend(message, subject));
-  }
-  if (!deliveryTasks.length) {
+async function deliverNotifications(message) {
+  if (!process.env.DISCORD_WEBHOOK_URL) {
     if (String(process.env.REQUIRE_NOTIFICATION_CHANNEL).toLowerCase() === "true") {
-      throw new Error("No notification channel is fully configured.");
+      throw new Error("Discord is not configured.");
     }
-    console.warn("No local notification channel configured; message was logged only.");
+    console.warn("No local Discord webhook configured; message was logged only.");
     return;
   }
-  const deliveries = await Promise.allSettled(deliveryTasks);
-  const deliveryFailures = deliveries
-    .filter((delivery) => delivery.status === "rejected")
-    .map((delivery) => delivery.reason?.message || String(delivery.reason));
-  if (deliveryFailures.length) {
-    throw new Error(`Notification delivery failed: ${deliveryFailures.join("; ")}`);
-  }
+  await sendDiscord(message);
 }
 
 async function main() {
@@ -990,6 +1071,7 @@ async function main() {
   const config = readJson(configPath, { routes: [] });
   const history = readJson(HISTORY_PATH, []);
   const state = readJson(STATE_PATH, { cursor: 0, alerts: {} });
+  const runId = new Date().toISOString();
   const checkIntervalHours = Number(config.checkIntervalHours || 48);
   const minimumElapsedMs = Math.max(1, checkIntervalHours - 1) * 60 * 60 * 1000;
   const lastCompletedAt = Date.parse(state.lastCompletedAt || "");
@@ -1010,15 +1092,26 @@ async function main() {
   );
   const discoveryEnabled = Boolean(config.discovery?.enabled)
     && String(process.env.DISCOVERY_ENABLED ?? "true").toLowerCase() !== "false";
+  const constructionsEnabled = Boolean(config.constructions?.enabled)
+    && String(process.env.CONSTRUCTIONS_ENABLED ?? "true").toLowerCase() !== "false";
+  const maximumReturnVerifications = Math.min(
+    1,
+    Math.max(0, Number(config.returnVerification?.maxPerRun || 1))
+  );
+  const constructionReserve = constructionsEnabled ? 2 : 0;
+  const exactSearchSlots = Math.max(
+    1,
+    maxSearchesPerRun - constructionReserve - maximumReturnVerifications
+  );
   const normalizedCursor = allSearches.length ? Number(state.cursor || 0) % allSearches.length : 0;
   const searches = selectSearches(allSearches, history, {
-    maxSearches: maxSearchesPerRun,
+    maxSearches: exactSearchSlots,
     horizonDays: config.exactSearchHorizonDays,
     oneWayShare: config.oneWaySearchShare
   });
   const nextCursor = allSearches.length ? (normalizedCursor + searches.length) % allSearches.length : 0;
 
-  if (!searches.length && !discoveryEnabled) {
+  if (!searches.length && !discoveryEnabled && !constructionsEnabled) {
     console.log("No searches configured.");
     return;
   }
@@ -1033,41 +1126,107 @@ async function main() {
   let returnVerificationsAttempted = 0;
   let returnVerificationsPassed = 0;
   const splitComparisons = [];
+  let constructionSummary = "";
+  let nextCoverage = { ...(state.coverageLedger || {}) };
+  const accountBeforeResult = await getSerpApiAccount();
+  if (!accountBeforeResult.ok) console.warn(accountBeforeResult.error);
+  const quota = buildQuotaSnapshot(
+    accountBeforeResult.ok ? accountBeforeResult.account : null,
+    config.quota?.reserveSearches || 10
+  );
+  const maximumCallsPerCycle = Math.max(
+    1,
+    Number(config.quota?.maxCallsPerCycle || 14)
+  );
+  const budgetLimit = quota.spendableThisRun === null
+    ? maximumCallsPerCycle
+    : Math.min(maximumCallsPerCycle, quota.spendableThisRun);
   const providerStats = {
     attempted: 0,
     successful: 0,
     failed: 0,
+    skipped: 0,
+    byKind: {},
     errors: []
   };
-  const trackedSearch = async (search, options) => {
+  const canSpend = () => providerStats.attempted < budgetLimit;
+  const recordProviderResult = (kind, result) => {
+    providerStats.byKind[kind] ||= { attempted: 0, successful: 0, failed: 0 };
+    providerStats.byKind[kind].attempted += 1;
     providerStats.attempted += 1;
-    const result = await searchSerpApi(search, options);
     if (result.ok) {
       providerStats.successful += 1;
+      providerStats.byKind[kind].successful += 1;
     } else {
       providerStats.failed += 1;
+      providerStats.byKind[kind].failed += 1;
       providerStats.errors.push(result.error);
     }
+  };
+  const trackedSearch = async (search, options, requestedKind = "exact") => {
+    const kind = options?.departureToken ? "return-verify" : requestedKind;
+    if (!canSpend()) {
+      providerStats.skipped += 1;
+      return {
+        ok: false,
+        skipped: true,
+        error: `Search skipped to preserve the ${config.quota?.reserveSearches || 10}-credit reserve and ${maximumCallsPerCycle}-call cycle cap.`,
+        offers: []
+      };
+    }
+    let result;
+    try {
+      result = await searchSerpApi(search, options);
+    } catch (error) {
+      result = {
+        ok: false,
+        error: `Google Flights request failed: ${error.message}`,
+        offers: []
+      };
+    }
+    recordProviderResult(kind, result);
+    nextCoverage = updateCoverage(nextCoverage, search, kind, result, runId);
     return result;
   };
 
   const knownDestinations = new Set(config.routes.flatMap((route) => (
     route.destinationLocationCodes || [route.destinationLocationCode || route.destination]
   )).filter(Boolean));
-  const discoveryResult = await searchGoogleTravelExplore(
-    {
-      ...(config.traveler || {}),
-      ...config.discovery,
-      enabled: discoveryEnabled
-    },
-    state,
-    knownDestinations
-  );
+  let discoveryResult;
+  if (discoveryEnabled && !canSpend()) {
+    providerStats.skipped += 1;
+    discoveryResult = {
+      ok: false,
+      error: "Flexible discovery skipped because the run has no safe SerpApi credits left.",
+      searches: [],
+      nextMonthCursor: Number(state.discoveryMonthCursor || 0)
+    };
+  } else {
+    try {
+      discoveryResult = await searchGoogleTravelExplore(
+        {
+          ...(config.traveler || {}),
+          ...config.discovery,
+          enabled: discoveryEnabled
+        },
+        state,
+        knownDestinations
+      );
+    } catch (error) {
+      discoveryResult = {
+        ok: false,
+        error: `Google Travel Explore request failed: ${error.message}`,
+        searches: [],
+        nextMonthCursor: Number(state.discoveryMonthCursor || 0)
+      };
+    }
+    if (discoveryEnabled) recordProviderResult("explore", discoveryResult);
+  }
   if (!discoveryResult.ok) {
     console.warn(discoveryResult.error);
   } else {
     for (const search of discoveryResult.searches) {
-      const result = await trackedSearch(search);
+      const result = await trackedSearch(search, undefined, "explore-verify");
       if (!result.ok) {
         console.warn(result.error);
         continue;
@@ -1095,8 +1254,8 @@ async function main() {
       ));
       if (!roundTripCandidate) continue;
       const [outboundSearch, inboundSearch] = buildSplitTicketSearches(roundTripSearch);
-      const outboundResult = await trackedSearch(outboundSearch);
-      const inboundResult = await trackedSearch(inboundSearch);
+      const outboundResult = await trackedSearch(outboundSearch, undefined, "split-outbound");
+      const inboundResult = await trackedSearch(inboundSearch, undefined, "split-inbound");
       splitTicketsChecked += 1;
       if (!outboundResult.ok || !inboundResult.ok) {
         if (!outboundResult.ok) console.warn(outboundResult.error);
@@ -1131,7 +1290,7 @@ async function main() {
   }
 
   for (const search of searches) {
-    const result = await trackedSearch(search);
+    const result = await trackedSearch(search, undefined, "exact");
     if (!result.ok) {
       console.warn(result.error);
       continue;
@@ -1145,19 +1304,64 @@ async function main() {
     newEntries.push(candidate.entry);
   }
 
-  const maxReturnVerifications = Math.max(
-    0,
-    Number(config.returnVerification?.maxPerRun || 3)
+  const referenceSearch = searches.find((search) => search.tripType === "round-trip") ||
+    allSearches.find((search) => (
+      search.tripType === "round-trip" &&
+      Date.parse(`${search.departureDate}T00:00:00Z`) > Date.now()
+    ));
+  const constructionLane = buildConstructionLane(
+    {
+      ...(config.traveler || {}),
+      ...(config.constructions || {}),
+      enabled: constructionsEnabled
+    },
+    state,
+    referenceSearch
   );
+  if (constructionLane.definition?.type === "nearby-airports") {
+    const constructionSearch = constructionLane.searches[0];
+    const result = await trackedSearch(constructionSearch, undefined, "construction");
+    if (result.ok) {
+      const cheapest = [...result.offers].sort((a, b) => a.price - b.price)[0];
+      if (cheapest) {
+        cheapest.source = "Nearby-airport group via Google Flights";
+        const candidate = summarizeCandidate(constructionSearch, cheapest, history);
+        candidates.push(candidate);
+        newEntries.push(candidate.entry);
+      }
+    }
+    constructionSummary = `checked ${constructionLane.definition.label} as a grouped nearby-airport search`;
+  } else if (constructionLane.definition?.type === "open-jaw") {
+    const [outboundSearch, inboundSearch] = constructionLane.searches;
+    const outboundResult = await trackedSearch(outboundSearch, undefined, "construction");
+    const inboundResult = await trackedSearch(inboundSearch, undefined, "construction");
+    if (outboundResult.ok && inboundResult.ok) {
+      const outboundOffer = [...outboundResult.offers].sort((a, b) => a.price - b.price)[0];
+      const inboundOffer = [...inboundResult.offers].sort((a, b) => a.price - b.price)[0];
+      if (outboundOffer && inboundOffer) {
+        const candidate = summarizeOpenJawCandidate(
+          referenceSearch,
+          constructionLane.definition,
+          outboundOffer,
+          inboundOffer,
+          history
+        );
+        candidates.push(candidate);
+        newEntries.push(candidate.entry);
+      }
+    }
+    constructionSummary = `checked ${constructionLane.definition.label} as two open-jaw one-way fares; transfer cost is excluded`;
+  }
+
   for (const candidate of [...candidates]) {
     if (
       !shouldAlert(candidate) ||
       candidate.entry.tripType !== "round-trip" ||
-      candidate.entry.searchStrategy === "split-one-ways"
+      ["split-one-ways", "open-jaw"].includes(candidate.entry.searchStrategy)
     ) {
       continue;
     }
-    if (returnVerificationsAttempted >= maxReturnVerifications) {
+    if (returnVerificationsAttempted >= maximumReturnVerifications) {
       candidate.insights.level = "verification-required";
       candidate.entry.verificationError =
         "Per-run return-verification quota was reached; no alert was sent.";
@@ -1191,19 +1395,24 @@ async function main() {
     returnVerificationsPassed += 1;
   }
 
-  if (providerStats.attempted > 0 && providerStats.successful === 0) {
-    const message = [
-      "Flight Tracker check incomplete",
-      "",
-      `All ${providerStats.attempted} Google Flights requests failed.`,
-      "No no-deal conclusion was recorded and the tracker will retry on its next workflow wake-up.",
-      ...providerStats.errors.slice(0, 3).map((error) => `Error: ${error}`)
-    ].join("\n");
-    console.error(message);
-    await deliverNotifications(message, "Flight Tracker check incomplete");
-    throw new Error("All Google Flights provider requests failed.");
-  }
-
+  const accountAfterResult = await getSerpApiAccount();
+  if (!accountAfterResult.ok) console.warn(accountAfterResult.error);
+  quota.after = accountAfterResult.ok
+    ? buildQuotaSnapshot(accountAfterResult.account, config.quota?.reserveSearches || 10)
+    : null;
+  quota.providerUsageDelta = accountBeforeResult.ok && accountAfterResult.ok
+    ? Number(accountAfterResult.account.this_month_usage) -
+      Number(accountBeforeResult.account.this_month_usage)
+    : null;
+  const promotionResult = await checkPromotionSources(
+    config.promotionMonitoring,
+    state.promotions || {}
+  );
+  promotionResult.errors.forEach((error) => console.warn(`Promotion watch: ${error}`));
+  const coverage = summarizeCoverage(allSearches, nextCoverage, {
+    horizonDays: config.exactSearchHorizonDays,
+    recentDays: 14
+  });
   const nextHistory = [...history, ...newEntries].slice(-2000);
   writeJson(HISTORY_PATH, nextHistory);
   const cooldownHours = Number(config.alertCooldownHours || 168);
@@ -1211,17 +1420,66 @@ async function main() {
   const dealCandidates = candidates.filter(shouldAlert);
   const alertCandidates = dealCandidates
     .filter((candidate) => isFreshAlert(candidate, alerts, cooldownHours));
+  const nextState = {
+    ...state,
+    cursor: forceRun ? state.cursor : nextCursor,
+    constructionCursor: forceRun
+      ? Number(state.constructionCursor || 0)
+      : constructionLane.nextCursor,
+    totalSearches: allSearches.length,
+    checkedThisRun: searches.length,
+    discoveryMonthCursor: discoveryResult.nextMonthCursor,
+    exploredMonth: discoveryResult.exploredMonth || null,
+    exploredCandidates: discoveryResult.exploredCandidates || 0,
+    flexibleDealsChecked: discoveryResult.ok ? discoveryResult.searches.length : 0,
+    splitTicketsChecked,
+    splitComparisons,
+    constructionSummary,
+    returnVerificationsAttempted,
+    returnVerificationsPassed,
+    providerStats,
+    quota,
+    coverage,
+    coverageLedger: nextCoverage,
+    promotions: promotionResult.state,
+    promotionErrors: promotionResult.errors,
+    lastRunAt: runId,
+    lastCompletedAt: forceRun ? state.lastCompletedAt : runId,
+    alerts
+  };
 
+  if (
+    providerStats.successful === 0 &&
+    (providerStats.attempted > 0 || providerStats.skipped > 0)
+  ) {
+    const message = [
+      "Flight Tracker check incomplete",
+      "",
+      providerStats.attempted
+        ? `All ${providerStats.attempted} Google Flights requests failed.`
+        : "No fare request could run without breaching the configured quota reserve.",
+      "No no-deal conclusion was recorded and the tracker will retry on its next workflow wake-up.",
+      ...providerStats.errors.slice(0, 3).map((error) => `Error: ${error}`)
+    ].join("\n");
+    console.error(message);
+    nextState.lastCompletedAt = state.lastCompletedAt;
+    writeJson(STATE_PATH, nextState);
+    await deliverNotifications(message);
+    throw new Error("All Google Flights provider requests failed.");
+  }
+
+  writeJson(STATE_PATH, nextState);
   if (alertCandidates.length) {
     const message = formatAlert(alertCandidates);
     console.log(message);
-    await deliverNotifications(message, "Flight deal candidates found");
+    await deliverNotifications(message);
     alertCandidates.forEach((candidate) => {
       alerts[alertKey(candidate)] = {
         price: candidate.entry.price,
         sentAt: Date.now()
       };
     });
+    writeJson(STATE_PATH, { ...nextState, alerts });
   } else {
     const discoveryNote = discoveryResult.searches.length
       ? ", including flexible discovery"
@@ -1236,29 +1494,20 @@ async function main() {
         returnVerificationsAttempted,
         returnVerificationsPassed,
         providerStats,
+        quota,
+        coverage,
+        constructionSummary,
+        promotionResult,
         checkIntervalHours
       });
       console.log(summary);
-      await deliverNotifications(summary, "Flight Tracker check complete: no new deals");
+      await deliverNotifications(summary);
     }
   }
 
-  writeJson(STATE_PATH, {
-    cursor: nextCursor,
-    totalSearches: allSearches.length,
-    checkedThisRun: searches.length,
-    discoveryMonthCursor: discoveryResult.nextMonthCursor,
-    exploredMonth: discoveryResult.exploredMonth || null,
-    exploredCandidates: discoveryResult.exploredCandidates || 0,
-    flexibleDealsChecked: discoveryResult.ok ? discoveryResult.searches.length : 0,
-    splitTicketsChecked,
-    splitComparisons,
-    returnVerificationsAttempted,
-    returnVerificationsPassed,
-    providerStats,
-    lastCompletedAt: new Date().toISOString(),
-    alerts
-  });
+  if (promotionResult.changed.length) {
+    await deliverNotifications(formatPromotionUpdate(promotionResult));
+  }
 }
 
 if (require.main === module) {
@@ -1278,5 +1527,6 @@ module.exports = {
   formatHistoryAnalysis,
   main,
   selectSearches,
+  summarizeOpenJawCandidate,
   summarizeSplitTicketCandidate
 };

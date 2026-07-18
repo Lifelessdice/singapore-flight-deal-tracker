@@ -14,8 +14,92 @@
     "attempted": 1,
     "successful": 1,
     "failed": 0,
+    "skipped": 0,
+    "byKind": {
+      "exact": {
+        "attempted": 1,
+        "successful": 1,
+        "failed": 0
+      }
+    },
     "errors": []
   },
   "lastCompletedAt": "2026-07-18T07:47:14.079Z",
-  "alerts": {}
+  "alerts": {},
+  "constructionCursor": 0,
+  "constructionSummary": "",
+  "quota": {
+    "planName": "Free Plan",
+    "monthlyLimit": 250,
+    "usedThisMonth": 55,
+    "remaining": 195,
+    "reserveSearches": 10,
+    "spendableThisRun": 185,
+    "renewalDate": "2026-08-12",
+    "after": {
+      "planName": "Free Plan",
+      "monthlyLimit": 250,
+      "usedThisMonth": 55,
+      "remaining": 195,
+      "reserveSearches": 10,
+      "spendableThisRun": 185,
+      "renewalDate": "2026-08-12"
+    },
+    "providerUsageDelta": 0
+  },
+  "coverage": {
+    "eligibleSearches": 392,
+    "recentlyCoveredSearches": 1,
+    "recentlySuccessfulSearches": 1,
+    "coveragePercent": 0,
+    "destinationCount": 14,
+    "staleDestinations": [
+      "KUL",
+      "PEN",
+      "BKK",
+      "DMK",
+      "CNX",
+      "DPS",
+      "CGK",
+      "SGN",
+      "HAN",
+      "MNL",
+      "CEB",
+      "TPE",
+      "HKG"
+    ],
+    "recentDays": 14,
+    "horizonDays": 90
+  },
+  "coverageLedger": {
+    "exact|sin-student-budget-aug-dec-2026|SIN|HKT|2026-08-07|2026-08-10|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "HKT",
+      "departureDate": "2026-08-07",
+      "returnDate": "2026-08-10",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-07-18T08:32:45.006Z",
+      "lastSuccessAt": "2026-07-18T08:32:45.006Z",
+      "lastOfferAt": "2026-07-18T08:32:45.006Z",
+      "lastError": null,
+      "runId": "2026-07-18T08:32:44.025Z"
+    }
+  },
+  "promotions": {
+    "airasia-sg": {
+      "fingerprint": "269bf236adc9fa6749ee17e01d86fb241add32dce05243d7f73c228bc09cb3b7",
+      "checkedAt": "2026-07-18T08:32:45.832Z",
+      "url": "https://www.airasia.com/promotions/sg/"
+    },
+    "scoot-deals": {
+      "fingerprint": "64ffe343ad2345d9bb507d8b73fbe899ca304ef7080e9c57d17c72e2daa1e497",
+      "checkedAt": "2026-07-18T08:32:47.122Z",
+      "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals"
+    }
+  },
+  "promotionErrors": [],
+  "lastRunAt": "2026-07-18T08:32:44.025Z"
 }
