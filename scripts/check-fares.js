@@ -396,6 +396,52 @@ function formatAlert(candidates) {
   return lines.join("\n");
 }
 
+function explainNoDeal(insights) {
+  if (insights.baselineSampleCount < 3 && insights.typicalMidpoint === null) {
+    const remaining = 3 - insights.baselineSampleCount;
+    return `baseline building; needs ${remaining} more comparable sample${remaining === 1 ? "" : "s"} unless Google supplies a typical-price range`;
+  }
+  if (insights.level === "wait") {
+    return insights.marketPriceLevel === "high"
+      ? "Google currently rates this fare as high"
+      : "fare is at least 10% above its comparable history";
+  }
+  if (insights.latestVsMedianPct !== null && insights.latestVsMedianPct > -10) {
+    const direction = insights.latestVsMedianPct < 0 ? "below" : "above";
+    return `only ${Math.abs(insights.latestVsMedianPct)}% ${direction} the prior median; a good deal needs at least 10% below plus statistical evidence`;
+  }
+  if (
+    insights.latestVsMedianPct !== null &&
+    insights.latestVsMedianPct <= -10 &&
+    insights.robustZScore !== null &&
+    insights.robustZScore > -1
+  ) {
+    return "price drop falls within normal route volatility";
+  }
+  if (insights.targetHit) {
+    return "inside the budget target, but not yet supported by relative-deal evidence";
+  }
+  return "no qualifying local-history or Google typical-price signal";
+}
+
+function formatHistoryAnalysis(entry, insights) {
+  const parts = [`${insights.confidence} confidence`];
+  if (insights.baselineSampleCount >= 3) {
+    parts.push(
+      `${Math.abs(insights.latestVsMedianPct)}% ${insights.latestVsMedianPct <= 0 ? "below" : "above"} prior median ${entry.currency} ${insights.medianPrice}`
+    );
+    parts.push(
+      `${Math.abs(insights.latestVsAveragePct)}% ${insights.latestVsAveragePct <= 0 ? "below" : "above"} prior average ${entry.currency} ${insights.averagePrice}`
+    );
+  } else {
+    parts.push(`${insights.baselineSampleCount}/3 prior comparable samples`);
+  }
+  if (insights.typicalLow !== null && insights.typicalHigh !== null) {
+    parts.push(`Google typical range ${entry.currency} ${insights.typicalLow}-${insights.typicalHigh}`);
+  }
+  return parts.join("; ");
+}
+
 function formatNoDealSummary(candidates, options = {}) {
   const discoveryResult = options.discoveryResult || {};
   const dealCandidates = options.dealCandidates || [];
@@ -420,12 +466,14 @@ function formatNoDealSummary(candidates, options = {}) {
     .slice(0, 3);
 
   if (cheapest.length) {
-    lines.push("", "Cheapest observed:");
-    cheapest.forEach(({ entry, insights }) => {
+    lines.push("", "Cheapest observed (not deal alerts):");
+    cheapest.forEach(({ entry, insights, links }, index) => {
       const dates = `${entry.departureDate}${entry.returnDate ? ` to ${entry.returnDate}` : ""}`;
-      lines.push(
-        `${entry.origin} -> ${entry.destination}, ${dates}: ${entry.currency} ${entry.price} ${entry.tripType}; ${insights.baselineSampleCount} prior comparable sample${insights.baselineSampleCount === 1 ? "" : "s"}; ${insights.level}.`
-      );
+      lines.push(`${index + 1}. ${entry.origin} -> ${entry.destination} | ${dates} | ${entry.currency} ${entry.price} ${entry.tripType}`);
+      if (entry.notes) lines.push(`Flight: ${entry.notes}.`);
+      lines.push(`Analysis: ${formatHistoryAnalysis(entry, insights)}.`);
+      lines.push(`Why no alert: ${explainNoDeal(insights)}.`);
+      if (links?.googleFlights) lines.push(`Open flight search: ${links.googleFlights}`);
     });
   } else {
     lines.push(
@@ -628,6 +676,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  explainNoDeal,
   formatNoDealSummary,
+  formatHistoryAnalysis,
   main
 };

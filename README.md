@@ -168,8 +168,10 @@ personal-item backpack with no paid carry-on or checked bag.
 After every completed search cycle, the worker sends either a deal alert or a
 no-deal heartbeat to every configured channel. The heartbeat reports how many
 live candidates were checked, how many flexible options were reviewed, and the
-three cheapest observed fares. Daily workflow wake-ups skipped by the 48-hour
-guard do not send a notification.
+three cheapest observed fares. Each listed fare includes route and dates, flight
+details, historical and Google-market analysis, the specific reason it did not
+trigger, and a Google Flights verification link. Daily workflow wake-ups skipped
+by the 48-hour guard do not send a notification.
 
 ### 5. Verify before booking
 
