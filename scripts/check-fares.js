@@ -913,9 +913,18 @@ async function sendResend(message, subject) {
   if (!sent.id) {
     throw new Error("Resend accepted the request without returning an email ID.");
   }
+  const maskedRecipients = String(process.env.ALERT_EMAIL_TO)
+    .split(",")
+    .map((recipient) => {
+      const [localPart, domain] = recipient.trim().split("@");
+      return domain ? `${localPart.slice(0, 2)}***@${domain}` : "***";
+    });
+  console.log(
+    `Resend accepted email ${sent.id} for ${maskedRecipients.join(", ")}; checking delivery.`
+  );
 
   let lastEvent = "sent";
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     const statusResponse = await fetch(`https://api.resend.com/emails/${sent.id}`, {
       headers: {
@@ -941,7 +950,7 @@ async function sendResend(message, subject) {
 
   if (String(process.env.REQUIRE_EMAIL_DELIVERY).toLowerCase() === "true") {
     throw new Error(
-      `Resend did not confirm recipient-server delivery within 20 seconds; last event: ${lastEvent}.`
+      `Resend did not confirm recipient-server delivery within 120 seconds; last event: ${lastEvent}; email ID: ${sent.id}.`
     );
   }
   console.warn(`Resend accepted the email; latest delivery event: ${lastEvent}.`);
