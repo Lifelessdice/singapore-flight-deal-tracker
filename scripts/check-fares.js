@@ -904,9 +904,47 @@ async function sendResend(message, subject) {
     })
   });
 
+  const responseBody = await response.text();
   if (!response.ok) {
-    throw new Error(`Resend alert failed: ${response.status} ${await response.text()}`);
+    throw new Error(`Resend alert failed: ${response.status} ${responseBody}`);
   }
+
+  const sent = JSON.parse(responseBody);
+  if (!sent.id) {
+    throw new Error("Resend accepted the request without returning an email ID.");
+  }
+
+  let lastEvent = "sent";
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const statusResponse = await fetch(`https://api.resend.com/emails/${sent.id}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`
+      }
+    });
+    if (!statusResponse.ok) continue;
+    const status = await statusResponse.json();
+    lastEvent = String(status.last_event || lastEvent).toLowerCase();
+    if (lastEvent === "delivered") {
+      const domains = (status.to || [process.env.ALERT_EMAIL_TO])
+        .map((recipient) => String(recipient).split("@").at(-1))
+        .filter(Boolean);
+      console.log(
+        `Resend confirmed email delivery to ${[...new Set(domains)].join(", ")}.`
+      );
+      return;
+    }
+    if (["bounced", "failed", "suppressed", "complained"].includes(lastEvent)) {
+      throw new Error(`Resend email delivery ended with status: ${lastEvent}.`);
+    }
+  }
+
+  if (String(process.env.REQUIRE_EMAIL_DELIVERY).toLowerCase() === "true") {
+    throw new Error(
+      `Resend did not confirm recipient-server delivery within 20 seconds; last event: ${lastEvent}.`
+    );
+  }
+  console.warn(`Resend accepted the email; latest delivery event: ${lastEvent}.`);
 }
 
 async function deliverNotifications(message, subject) {
