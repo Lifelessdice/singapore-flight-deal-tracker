@@ -109,6 +109,95 @@ function buildSearches(route) {
     }));
 }
 
+function searchMatchesHistory(search, item, exactDates = false) {
+  if (
+    item.origin !== search.origin ||
+    item.destination !== search.destination ||
+    (item.tripType || (item.returnDate ? "round-trip" : "one-way")) !== search.tripType ||
+    !hasSameBaggageProfile(item, search)
+  ) {
+    return false;
+  }
+  return !exactDates || (
+    item.departureDate === search.departureDate &&
+    (item.returnDate || "") === (search.returnDate || "")
+  );
+}
+
+function lastObservedAt(history, search, exactDates = false) {
+  return (history || [])
+    .filter((item) => searchMatchesHistory(search, item, exactDates))
+    .reduce((latest, item) => Math.max(latest, Number(item.loggedAt) || 0), 0);
+}
+
+function selectSearches(allSearches, history, options = {}) {
+  const now = Number(options.now || Date.now());
+  const maxSearches = Math.max(0, Number(options.maxSearches) || 0);
+  const horizonDays = Math.max(1, Number(options.horizonDays) || 90);
+  const horizon = now + horizonDays * 24 * 60 * 60 * 1000;
+  const future = allSearches.filter((search) => (
+    Date.parse(`${search.departureDate}T23:59:59Z`) > now
+  ));
+  const withinHorizon = future.filter((search) => (
+    Date.parse(`${search.departureDate}T00:00:00Z`) <= horizon
+  ));
+  const eligible = withinHorizon.length ? withinHorizon : future;
+  const ranked = [...eligible].sort((a, b) => (
+    lastObservedAt(history, a) - lastObservedAt(history, b) ||
+    lastObservedAt(history, a, true) - lastObservedAt(history, b, true) ||
+    Date.parse(a.departureDate) - Date.parse(b.departureDate) ||
+    a.destination.localeCompare(b.destination)
+  ));
+
+  if (maxSearches < 4) return ranked.slice(0, maxSearches);
+
+  const oneWayShare = Math.min(0.5, Math.max(0, Number(options.oneWayShare) || 0.25));
+  const oneWayQuota = Math.max(1, Math.floor(maxSearches * oneWayShare));
+  const roundTripQuota = maxSearches - oneWayQuota;
+  const selected = [
+    ...ranked.filter((search) => search.tripType === "round-trip").slice(0, roundTripQuota),
+    ...ranked.filter((search) => search.tripType === "one-way").slice(0, oneWayQuota)
+  ];
+  const selectedKeys = new Set(selected.map((search) => [
+    search.origin,
+    search.destination,
+    search.departureDate,
+    search.returnDate,
+    search.tripType
+  ].join("|")));
+  const remainder = ranked.filter((search) => !selectedKeys.has([
+    search.origin,
+    search.destination,
+    search.departureDate,
+    search.returnDate,
+    search.tripType
+  ].join("|")));
+  return [...selected, ...remainder].slice(0, maxSearches);
+}
+
+function buildSplitTicketSearches(roundTripSearch) {
+  if (!roundTripSearch?.returnDate) return [];
+  return [
+    {
+      ...roundTripSearch,
+      routeId: `${roundTripSearch.routeId}-split-outbound`,
+      returnDate: "",
+      tripType: "one-way",
+      maxPrice: null
+    },
+    {
+      ...roundTripSearch,
+      routeId: `${roundTripSearch.routeId}-split-inbound`,
+      origin: roundTripSearch.destination,
+      destination: roundTripSearch.origin,
+      departureDate: roundTripSearch.returnDate,
+      returnDate: "",
+      tripType: "one-way",
+      maxPrice: null
+    }
+  ];
+}
+
 async function searchSerpApi(search) {
   assertEnv("SERPAPI_API_KEY");
 
@@ -334,6 +423,70 @@ function summarizeCandidate(search, offer, history) {
   };
 }
 
+function summarizeSplitTicketCandidate(
+  roundTripSearch,
+  outboundOffer,
+  inboundOffer,
+  roundTripCandidate,
+  history,
+  splitConfig = {}
+) {
+  const combinedPrice = outboundOffer.price + inboundOffer.price;
+  if (combinedPrice >= roundTripCandidate.entry.price) return null;
+
+  const savings = roundTripCandidate.entry.price - combinedPrice;
+  const savingsPercent = Math.round((savings / roundTripCandidate.entry.price) * 100);
+  const airlines = [...new Set([
+    ...outboundOffer.airlines,
+    ...inboundOffer.airlines
+  ])];
+  const splitOffer = {
+    source: "Two separately priced one-way tickets via Google Flights",
+    price: combinedPrice,
+    currency: roundTripSearch.currencyCode,
+    totalDurationMinutes: outboundOffer.totalDurationMinutes + inboundOffer.totalDurationMinutes,
+    maxStops: Math.max(outboundOffer.maxStops, inboundOffer.maxStops),
+    airlines,
+    googlePriceInsights: null
+  };
+  const candidate = summarizeCandidate(
+    {
+      ...roundTripSearch,
+      routeId: `split-${roundTripSearch.origin}-${roundTripSearch.destination}`
+    },
+    splitOffer,
+    history
+  );
+  const [outboundSearch, inboundSearch] = buildSplitTicketSearches(roundTripSearch);
+  candidate.entry.searchStrategy = "split-one-ways";
+  candidate.entry.roundTripComparisonPrice = roundTripCandidate.entry.price;
+  candidate.entry.strategySavings = savings;
+  candidate.entry.strategySavingsPercent = savingsPercent;
+  candidate.entry.strategyMinimumSavingsUsd = Number(splitConfig.minimumSavingsUsd || 15);
+  candidate.entry.strategyMinimumSavingsPercent = Number(splitConfig.minimumSavingsPercent || 10);
+  candidate.entry.notes = `${outboundOffer.airlines.join(", ") || "unknown carrier"} outbound plus ${inboundOffer.airlines.join(", ") || "unknown carrier"} return on separate one-way tickets, ${Math.round(outboundOffer.totalDurationMinutes / 60)}h outbound and ${Math.round(inboundOffer.totalDurationMinutes / 60)}h return, maximum ${splitOffer.maxStops} stop${splitOffer.maxStops === 1 ? "" : "s"} per direction`;
+  candidate.links.outboundGoogleFlights = getGoogleFlightsUrl(outboundSearch);
+  candidate.links.inboundGoogleFlights = getGoogleFlightsUrl(inboundSearch);
+
+  const minimumSavingsUsd = candidate.entry.strategyMinimumSavingsUsd;
+  const minimumSavingsPercent = candidate.entry.strategyMinimumSavingsPercent;
+  const strongSavingsUsd = Number(splitConfig.strongSavingsUsd || 30);
+  const strongSavingsPercent = Number(splitConfig.strongSavingsPercent || 20);
+  const qualifies = savings >= minimumSavingsUsd && savingsPercent >= minimumSavingsPercent;
+  const strong = savings >= strongSavingsUsd && savingsPercent >= strongSavingsPercent;
+  if (qualifies) {
+    candidate.insights.level = strong ? "strong-deal" : "good-deal";
+    candidate.insights.confidence = "medium";
+    candidate.insights.dealSignals = [
+      ...new Set([...candidate.insights.dealSignals, "separate-one-way-pricing"])
+    ];
+  }
+  candidate.insights.strategyQualifies = qualifies;
+  candidate.insights.strategySavings = savings;
+  candidate.insights.strategySavingsPercent = savingsPercent;
+  return candidate;
+}
+
 function shouldAlert(candidate) {
   return ["strong-deal", "good-deal"].includes(candidate.insights.level);
 }
@@ -378,6 +531,11 @@ function formatAlert(candidates) {
     if (insights.savingsVsMedian || insights.savingsVsAverage) {
       lines.push(`Estimated savings: ${entry.currency} ${insights.savingsVsMedian || 0} vs median; ${entry.currency} ${insights.savingsVsAverage || 0} vs average.`);
     }
+    if (entry.searchStrategy === "split-one-ways") {
+      lines.push(
+        `Split-ticket advantage: ${entry.currency} ${entry.strategySavings} (${entry.strategySavingsPercent}%) below the same-run round-trip fare of ${entry.currency} ${entry.roundTripComparisonPrice}. These are independent outbound and return bookings.`
+      );
+    }
     if (entry.passportNationality || entry.baggageProfile) {
       const travelerDetails = [
         entry.passportNationality ? `${entry.passportNationality} passport` : "",
@@ -388,6 +546,10 @@ function formatAlert(candidates) {
     }
     lines.push(`Trip details: ${entry.notes}.`);
     lines.push(`Google Flights: ${candidate.links.googleFlights}`);
+    if (candidate.links.outboundGoogleFlights) {
+      lines.push(`Outbound one-way: ${candidate.links.outboundGoogleFlights}`);
+      lines.push(`Return one-way: ${candidate.links.inboundGoogleFlights}`);
+    }
     lines.push(`ITA Matrix: ${candidate.links.itaMatrix}`);
     lines.push(`Skiplagged: ${candidate.links.skiplagged}`);
     lines.push("");
@@ -396,7 +558,10 @@ function formatAlert(candidates) {
   return lines.join("\n");
 }
 
-function explainNoDeal(insights) {
+function explainNoDeal(insights, entry = {}) {
+  if (entry.searchStrategy === "split-one-ways" && !insights.strategyQualifies) {
+    return `separate one-ways save ${entry.currency} ${entry.strategySavings} (${entry.strategySavingsPercent}%); this needs both ${entry.currency} ${entry.strategyMinimumSavingsUsd} and ${entry.strategyMinimumSavingsPercent}% savings to qualify`;
+  }
   if (insights.baselineSampleCount < 3 && insights.typicalMidpoint === null) {
     const remaining = 3 - insights.baselineSampleCount;
     return `baseline building; needs ${remaining} more comparable sample${remaining === 1 ? "" : "s"} unless Google supplies a typical-price range`;
@@ -426,6 +591,11 @@ function explainNoDeal(insights) {
 
 function formatHistoryAnalysis(entry, insights) {
   const parts = [`${insights.confidence} confidence`];
+  if (entry.searchStrategy === "split-one-ways") {
+    parts.push(
+      `${entry.currency} ${entry.strategySavings} (${entry.strategySavingsPercent}%) below same-run round trip`
+    );
+  }
   if (insights.baselineSampleCount >= 3) {
     parts.push(
       `${Math.abs(insights.latestVsMedianPct)}% ${insights.latestVsMedianPct <= 0 ? "below" : "above"} prior median ${entry.currency} ${insights.medianPrice}`
@@ -460,6 +630,11 @@ function formatNoDealSummary(candidates, options = {}) {
       `Flexible discovery reviewed ${discoveryResult.exploredCandidates} option${discoveryResult.exploredCandidates === 1 ? "" : "s"} for month ${discoveryResult.exploredMonth}.`
     );
   }
+  if (options.splitTicketsChecked) {
+    lines.push(
+      `Compared ${options.splitTicketsChecked} round trip${options.splitTicketsChecked === 1 ? "" : "s"} against separately priced outbound and return tickets.`
+    );
+  }
 
   const cheapest = [...candidates]
     .sort((a, b) => a.entry.price - b.entry.price)
@@ -472,8 +647,13 @@ function formatNoDealSummary(candidates, options = {}) {
       lines.push(`${index + 1}. ${entry.origin} -> ${entry.destination} | ${dates} | ${entry.currency} ${entry.price} ${entry.tripType}`);
       if (entry.notes) lines.push(`Flight: ${entry.notes}.`);
       lines.push(`Analysis: ${formatHistoryAnalysis(entry, insights)}.`);
-      lines.push(`Why no alert: ${explainNoDeal(insights)}.`);
-      if (links?.googleFlights) lines.push(`Open flight search: ${links.googleFlights}`);
+      lines.push(`Why no alert: ${explainNoDeal(insights, entry)}.`);
+      if (links?.outboundGoogleFlights) {
+        lines.push(`Outbound: ${links.outboundGoogleFlights}`);
+        lines.push(`Return: ${links.inboundGoogleFlights}`);
+      } else if (links?.googleFlights) {
+        lines.push(`Open flight search: ${links.googleFlights}`);
+      }
     });
   } else {
     lines.push(
@@ -558,10 +738,11 @@ async function main() {
   const discoveryEnabled = Boolean(config.discovery?.enabled)
     && String(process.env.DISCOVERY_ENABLED ?? "true").toLowerCase() !== "false";
   const normalizedCursor = allSearches.length ? Number(state.cursor || 0) % allSearches.length : 0;
-  const searches = Array.from(
-    { length: Math.min(maxSearchesPerRun, allSearches.length) },
-    (_, offset) => allSearches[(normalizedCursor + offset) % allSearches.length]
-  );
+  const searches = selectSearches(allSearches, history, {
+    maxSearches: maxSearchesPerRun,
+    horizonDays: config.exactSearchHorizonDays,
+    oneWayShare: config.oneWaySearchShare
+  });
   const nextCursor = allSearches.length ? (normalizedCursor + searches.length) % allSearches.length : 0;
 
   if (!searches.length && !discoveryEnabled) {
@@ -575,6 +756,7 @@ async function main() {
 
   const candidates = [];
   const newEntries = [];
+  let splitTicketsChecked = 0;
 
   const knownDestinations = new Set(config.routes.flatMap((route) => (
     route.destinationLocationCodes || [route.destinationLocationCode || route.destination]
@@ -603,6 +785,46 @@ async function main() {
       const candidate = summarizeCandidate(search, cheapest, history);
       candidates.push(candidate);
       newEntries.push(candidate.entry);
+    }
+  }
+
+  if (config.splitTickets?.enabled && discoveryResult.searches.length) {
+    const splitTargets = discoveryResult.searches.slice(
+      0,
+      Math.max(0, Number(config.splitTickets.verifyPerRun || 1))
+    );
+    for (const roundTripSearch of splitTargets) {
+      const roundTripCandidate = candidates.find((candidate) => (
+        candidate.entry.origin === roundTripSearch.origin &&
+        candidate.entry.destination === roundTripSearch.destination &&
+        candidate.entry.departureDate === roundTripSearch.departureDate &&
+        candidate.entry.returnDate === roundTripSearch.returnDate
+      ));
+      if (!roundTripCandidate) continue;
+      const [outboundSearch, inboundSearch] = buildSplitTicketSearches(roundTripSearch);
+      const outboundResult = await searchSerpApi(outboundSearch);
+      const inboundResult = await searchSerpApi(inboundSearch);
+      splitTicketsChecked += 1;
+      if (!outboundResult.ok || !inboundResult.ok) {
+        if (!outboundResult.ok) console.warn(outboundResult.error);
+        if (!inboundResult.ok) console.warn(inboundResult.error);
+        continue;
+      }
+      const outboundOffer = outboundResult.offers.sort((a, b) => a.price - b.price)[0];
+      const inboundOffer = inboundResult.offers.sort((a, b) => a.price - b.price)[0];
+      if (!outboundOffer || !inboundOffer) continue;
+      const splitCandidate = summarizeSplitTicketCandidate(
+        roundTripSearch,
+        outboundOffer,
+        inboundOffer,
+        roundTripCandidate,
+        history,
+        config.splitTickets
+      );
+      if (splitCandidate) {
+        candidates.push(splitCandidate);
+        newEntries.push(splitCandidate.entry);
+      }
     }
   }
 
@@ -648,6 +870,7 @@ async function main() {
       const summary = formatNoDealSummary(candidates, {
         discoveryResult,
         dealCandidates,
+        splitTicketsChecked,
         checkIntervalHours
       });
       console.log(summary);
@@ -663,6 +886,7 @@ async function main() {
     exploredMonth: discoveryResult.exploredMonth || null,
     exploredCandidates: discoveryResult.exploredCandidates || 0,
     flexibleDealsChecked: discoveryResult.ok ? discoveryResult.searches.length : 0,
+    splitTicketsChecked,
     lastCompletedAt: new Date().toISOString(),
     alerts
   });
@@ -676,8 +900,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildSearches,
+  buildSplitTicketSearches,
   explainNoDeal,
   formatNoDealSummary,
   formatHistoryAnalysis,
-  main
+  main,
+  selectSearches,
+  summarizeSplitTicketCandidate
 };

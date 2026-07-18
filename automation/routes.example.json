@@ -3,6 +3,16 @@
   "alertCooldownHours": 168,
   "notifyOnNoDeals": true,
   "maxSearchesPerRun": 8,
+  "exactSearchHorizonDays": 90,
+  "oneWaySearchShare": 0.25,
+  "splitTickets": {
+    "enabled": true,
+    "verifyPerRun": 1,
+    "minimumSavingsUsd": 15,
+    "minimumSavingsPercent": 10,
+    "strongSavingsUsd": 30,
+    "strongSavingsPercent": 20
+  },
   "traveler": {
     "passportNationality": "Swiss",
     "passportCountryCode": "CH",

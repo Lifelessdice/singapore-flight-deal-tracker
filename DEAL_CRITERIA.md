@@ -67,9 +67,17 @@ destinations plus one promising destination outside the fixed list. Exact
 verification is important because discovery prices can be stale or can represent
 a different itinerary than the one ultimately booked.
 
-The normal queue also rotates exact date, destination, and one-way searches. At
-the current limits, the design stays below the SerpApi free-tier allowance during
-a normal month while gradually building comparable route history.
+The normal queue prioritizes routes that have been checked least recently, then
+rotates their exact dates inside a 90-day booking horizon. Six of the eight slots
+normally check returns and two check one ways. This replaces a sequential
+644-search rotation that could not revisit every destination promptly enough.
+
+For the cheapest verified flexible trip, the worker also prices the outbound and
+return as independent one-way tickets. The split option qualifies only when it
+saves at least both `USD 15` and 10% against the exact same-run return fare.
+Savings of at least `USD 30` and 20% form a strong deal. Because the tickets are
+for opposite travel days rather than a self-connection, a delayed outbound does
+not create a missed-connection risk on the return.
 
 ## Research decisions
 
@@ -88,6 +96,17 @@ a normal month while gradually building comparable route history.
   separate tickets are genuinely cheaper.
 - Airline-direct booking is preferred after comparison because schedule changes
   are usually easier to resolve than with an online travel agency.
+- Skyscanner's Everywhere and whole-month workflow supports destination-first,
+  date-flexible discovery followed by exact verification.
+- KAYAK Explore's budget, duration, and nearby-airport controls support ranking
+  total trip fit rather than airfare alone.
+- Going and Secret Flying emphasize abnormal price drops and mistake fares. The
+  tracker mirrors the anomaly concept while requiring reproducible price evidence
+  and a live Google Flights link.
+- FlightConnections' route-map model supports periodic coverage checks for direct
+  destinations that may not yet be in the fixed list.
+- Kiwi-style ticket combinations inspired the separately priced outbound/return
+  comparison, but not unprotected tight connections.
 
 ### Tested but rejected
 
@@ -106,16 +125,20 @@ a normal month while gradually building comparable route history.
 - Tight self-transfers are not automated. Separate tickets can fail without
   protection when the first flight is late, and checked baggage may need to be
   reclaimed.
+- Johor Bahru positioning is not automatically ranked yet. Border queues and
+  ground transfers can consume a large share of a 2-to-4-day trip, so airfare
+  savings would need a separate total-cost and time model.
 - Hidden-city fares are verification candidates only. They should never be used
   with checked baggage or on an itinerary where a later segment must be flown.
 
 ## Search frequency and quota
 
 GitHub Actions wakes once per day, but the worker only performs a scheduled fare
-cycle after approximately 48 hours. Each normal cycle uses up to 12 SerpApi
-searches: one flexible Explore search, three exact verifications, and eight
-rotating route/date searches. That is approximately 180 searches in a 30-day
-month. Manual smoke tests disable Explore and default to one exact search.
+cycle after approximately 48 hours. Each normal cycle uses up to 14 SerpApi
+searches: one flexible Explore search, three exact verifications, two split-ticket
+checks, and eight prioritized route/date searches. That is approximately 210
+searches in a 30-day month, leaving about 40 of the current 250 free searches for
+manual QA. Manual smoke tests disable Explore and default to one exact search.
 
 Alerts do not claim that a destination is visa-feasible. Entry and transit rules
 can change and must be verified for the Swiss passport before booking.
@@ -144,3 +167,13 @@ so changing baggage assumptions cannot manufacture an artificial price drop.
   <https://github.com/affromero/flight-finder>
 - Flight Analysis:
   <https://github.com/celebi-pkg/flight-analysis>
+- Skyscanner flexible dates and Everywhere:
+  <https://help.skyscanner.net/hc/en-gb/articles/201150942-How-do-I-find-the-best-prices>
+- KAYAK Explore:
+  <https://www.kayak.com/news/where-to-fly-on-your-budget-kayak-explore/>
+- Going deal alerts:
+  <https://www.going.com/>
+- Secret Flying:
+  <https://www.secretflying.com/faq/>
+- FlightConnections:
+  <https://www.flightconnections.com/>
