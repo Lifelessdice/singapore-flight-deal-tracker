@@ -902,5 +902,31 @@
     "returnVerified": false,
     "notes": "Malaysia Airlines via Google Flights via SerpApi, 7h, maximum 1 stop per direction, personal-item allowance not confirmed by the flight feed",
     "googlePriceInsights": null
+  },
+  {
+    "routeId": "sin-student-budget-aug-dec-2026",
+    "source": "Google Flights via SerpApi",
+    "price": 165,
+    "currency": "USD",
+    "origin": "SIN",
+    "destination": "HKG",
+    "departureDate": "2026-08-07",
+    "returnDate": "",
+    "tripType": "one-way",
+    "loggedAt": 1784360833782,
+    "leadTimeBucket": "15-30d",
+    "tripLengthDays": null,
+    "weekendDeparture": true,
+    "destinationName": null,
+    "averagePrice": null,
+    "discountPercentage": null,
+    "passportNationality": "Swiss",
+    "passportCountryCode": "CH",
+    "carryOnBags": 0,
+    "checkedBags": 0,
+    "baggageProfile": "one free under-seat personal-item backpack",
+    "returnVerified": false,
+    "notes": "Scoot via Google Flights via SerpApi, 4h, maximum 0 stops per direction, personal-item allowance not confirmed by the flight feed",
+    "googlePriceInsights": null
   }
 ]
