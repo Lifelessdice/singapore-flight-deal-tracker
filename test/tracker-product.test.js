@@ -167,7 +167,15 @@ async function testPromotions() {
     initial.state,
     async () => ({ ok: true, text: async () => "<h1>Weekend sale 40% off Singapore</h1>" })
   );
-  assert.equal(changed.changed.length, 1);
+  assert.equal(changed.changed.length, 0);
+  assert.equal(changed.state.airline.candidateSeenCount, 1);
+  const confirmed = await checkPromotionSources(
+    promotionConfig,
+    changed.state,
+    async () => ({ ok: true, text: async () => "<h1>Weekend sale 40% off Singapore</h1>" })
+  );
+  assert.equal(confirmed.changed.length, 1);
+  assert.equal(confirmed.state.airline.candidateSeenCount, 0);
 }
 
 testPromotions()

@@ -69,6 +69,10 @@ State is persisted before Discord delivery. Therefore notification failure canno
 erase credits already spent. Alert cooldowns are persisted only after Discord
 accepts the alert, allowing a failed alert to retry.
 
+Promotion changes must produce the same new relevant-content fingerprint on two
+consecutive checks before Discord is notified. This filters dynamic page chrome
+and region-dependent rendering.
+
 ## Provider limitations
 
 Google's first return response is normally an outbound selection; a

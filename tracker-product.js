@@ -349,18 +349,35 @@ async function checkPromotionSources(config, previousState = {}, fetchImpl = fet
         .join("|");
       const fingerprint = promotionFingerprint(relevantText || text.slice(0, 2000));
       const previous = previousState[source.id];
-      nextState[source.id] = {
-        fingerprint,
-        checkedAt: new Date().toISOString(),
-        url: source.url
-      };
-      if (previous?.fingerprint && previous.fingerprint !== fingerprint) {
-        changed.push({
-          id: source.id,
-          label: source.label,
+      const checkedAt = new Date().toISOString();
+      if (!previous?.fingerprint || previous.fingerprint === fingerprint) {
+        nextState[source.id] = {
+          fingerprint,
+          checkedAt,
           url: source.url,
-          snippet: extractPromotionSnippet(text, source.keywords || config.keywords)
-        });
+          candidateFingerprint: null,
+          candidateSeenCount: 0
+        };
+      } else {
+        const candidateSeenCount = previous.candidateFingerprint === fingerprint
+          ? Number(previous.candidateSeenCount || 0) + 1
+          : 1;
+        const confirmed = candidateSeenCount >= 2;
+        nextState[source.id] = {
+          fingerprint: confirmed ? fingerprint : previous.fingerprint,
+          checkedAt,
+          url: source.url,
+          candidateFingerprint: confirmed ? null : fingerprint,
+          candidateSeenCount: confirmed ? 0 : candidateSeenCount
+        };
+        if (confirmed) {
+          changed.push({
+            id: source.id,
+            label: source.label,
+            url: source.url,
+            snippet: extractPromotionSnippet(text, source.keywords || config.keywords)
+          });
+        }
       }
     } catch (error) {
       errors.push(`${source.label}: ${error.message}`);

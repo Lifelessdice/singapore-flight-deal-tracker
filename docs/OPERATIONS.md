@@ -44,7 +44,8 @@ Every completed scheduled cycle sends either:
   usage, exact coverage, construction activity, and promotion-page health.
 
 Official airline promotion changes are sent as a separate lead. A promotion-page
-change is not a verified flight deal.
+change is not a verified flight deal. A new page fingerprint must repeat on two
+consecutive checks before it is announced.
 
 ## Quota behavior
 
