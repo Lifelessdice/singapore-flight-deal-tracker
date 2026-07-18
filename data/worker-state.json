@@ -39,19 +39,19 @@
     "after": {
       "planName": "Free Plan",
       "monthlyLimit": 250,
-      "usedThisMonth": 55,
-      "remaining": 195,
+      "usedThisMonth": 56,
+      "remaining": 194,
       "reserveSearches": 10,
-      "spendableThisRun": 185,
+      "spendableThisRun": 184,
       "renewalDate": "2026-08-12"
     },
-    "providerUsageDelta": 0
+    "providerUsageDelta": 1
   },
   "coverage": {
     "eligibleSearches": 392,
-    "recentlyCoveredSearches": 1,
-    "recentlySuccessfulSearches": 1,
-    "coveragePercent": 0,
+    "recentlyCoveredSearches": 2,
+    "recentlySuccessfulSearches": 2,
+    "coveragePercent": 1,
     "destinationCount": 14,
     "staleDestinations": [
       "KUL",
@@ -86,20 +86,35 @@
       "lastOfferAt": "2026-07-18T08:32:45.006Z",
       "lastError": null,
       "runId": "2026-07-18T08:32:44.025Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|HKT|2026-08-07||one-way|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "HKT",
+      "departureDate": "2026-08-07",
+      "returnDate": "",
+      "tripType": "one-way",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-07-18T16:45:01.891Z",
+      "lastSuccessAt": "2026-07-18T16:45:01.891Z",
+      "lastOfferAt": "2026-07-18T16:45:01.891Z",
+      "lastError": null,
+      "runId": "2026-07-18T16:45:00.059Z"
     }
   },
   "promotions": {
     "airasia-sg": {
       "fingerprint": "269bf236adc9fa6749ee17e01d86fb241add32dce05243d7f73c228bc09cb3b7",
-      "checkedAt": "2026-07-18T08:32:45.832Z",
+      "checkedAt": "2026-07-18T16:45:02.436Z",
       "url": "https://www.airasia.com/promotions/sg/"
     },
     "scoot-deals": {
-      "fingerprint": "64ffe343ad2345d9bb507d8b73fbe899ca304ef7080e9c57d17c72e2daa1e497",
-      "checkedAt": "2026-07-18T08:32:47.122Z",
+      "fingerprint": "a114aa5acd8e4921fffe294a3f96f17d5c99c7704d597a5ca5c76ecff9776a40",
+      "checkedAt": "2026-07-18T16:45:03.215Z",
       "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals"
     }
   },
   "promotionErrors": [],
-  "lastRunAt": "2026-07-18T08:32:44.025Z"
+  "lastRunAt": "2026-07-18T16:45:00.059Z"
 }
