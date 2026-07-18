@@ -923,8 +923,11 @@ async function sendResend(message, subject) {
     `Resend accepted email ${sent.id} for ${maskedRecipients.join(", ")}; checking delivery.`
   );
 
+  const requireDelivery =
+    String(process.env.REQUIRE_EMAIL_DELIVERY).toLowerCase() === "true";
+  const deliveryAttempts = requireDelivery ? 60 : 5;
   let lastEvent = "sent";
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < deliveryAttempts; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     const statusResponse = await fetch(`https://api.resend.com/emails/${sent.id}`, {
       headers: {
@@ -948,7 +951,7 @@ async function sendResend(message, subject) {
     }
   }
 
-  if (String(process.env.REQUIRE_EMAIL_DELIVERY).toLowerCase() === "true") {
+  if (requireDelivery) {
     throw new Error(
       `Resend did not confirm recipient-server delivery within 120 seconds; last event: ${lastEvent}; email ID: ${sent.id}.`
     );

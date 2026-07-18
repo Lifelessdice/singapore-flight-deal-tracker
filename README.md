@@ -151,8 +151,9 @@ ALERT_EMAIL_TO
 ```
 
 Discord is the easiest free setup. Resend works well if you already have a verified sender domain or are using their allowed onboarding sender.
-The cloud workflow polls Resend after each send and succeeds only after Resend
-reports that the recipient mail server accepted the email as delivered.
+The cloud workflow checks Resend's delivery status after each send. Manual email
+tests fail unless the recipient server confirms delivery; scheduled fare checks
+keep Discord and fare-history updates working while logging an email warning.
 
 ### 4. Enable the scheduled workflow
 

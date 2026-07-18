@@ -44,7 +44,7 @@ jobs:
           ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           REQUIRE_NOTIFICATION_CHANNEL: "true"
-          REQUIRE_EMAIL_DELIVERY: "true"
+          REQUIRE_EMAIL_DELIVERY: ${{ github.event_name == 'workflow_dispatch' }}
           FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' }}
           MAX_SEARCHES_PER_RUN: ${{ inputs.max_searches }}
           DISCOVERY_ENABLED: ${{ github.event_name != 'workflow_dispatch' || inputs.run_discovery }}
