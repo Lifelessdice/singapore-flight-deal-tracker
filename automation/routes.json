@@ -24,6 +24,7 @@
     "passportNationality": "Switzerland",
     "passportCountryCode": "CHE",
     "passportExpiresOn": null,
+    "passportValidityConfirmedAgainstPublishedRules": true,
     "carryOnBags": 0,
     "checkedBags": 0,
     "baggageProfile": "one free under-seat personal-item backpack"

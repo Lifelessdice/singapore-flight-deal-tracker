@@ -200,11 +200,14 @@ percentage and amount versus the cheapest comparable protected fare, the worker
 assesses it separately.
 
 The assessment uses nationality `Switzerland`, passport code `CHE`, and the
-configured baggage profile. `passportExpiresOn` must be configured before an
-entry-validity rule can pass automatically. Defaults require 240 minutes for a known same-airport
-transfer, 360 minutes when immigration/recheck/terminal uncertainty applies, and
-480 minutes for an airport change. Authorization, bag-recheck, ground-transfer,
-and accommodation costs are added to the effective fare when known.
+configured baggage profile. Passport validity can be checked from
+`passportExpiresOn`, or privately attested with
+`passportValidityConfirmedAgainstPublishedRules` when the traveler has checked
+the maintained rule and does not want to store the exact date. Defaults require
+240 minutes for a known same-airport transfer, 360 minutes when
+immigration/recheck/terminal uncertainty applies, and 480 minutes for an airport
+change. Authorization, bag-recheck, ground-transfer, and accommodation costs are
+added to the effective fare when known.
 
 Policy results are `protected`, `self-transfer-acceptable`,
 `self-transfer-manual-review`, or `self-transfer-rejected`. Unknown, stale,

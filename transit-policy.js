@@ -387,10 +387,19 @@ async function assessTransferRisk({
     const tripEnd = Date.parse(`${travelEndDate || ""}T00:00:00Z`);
     const validityMonths = Number(policy.passportValidityMinimumMonthsAfterTravel);
     if (
-      !Number.isFinite(passportExpiry) ||
       !Number.isFinite(tripEnd) ||
       !Number.isFinite(validityMonths)
     ) {
+      manualReview = true;
+      reasons.push("The maintained passport-validity rule could not be evaluated.");
+    } else if (
+      !Number.isFinite(passportExpiry) &&
+      traveler.passportValidityConfirmedAgainstPublishedRules === true
+    ) {
+      warnings.push(
+        "Traveler confirmed the passport meets the published validity rule; exact expiry is not stored."
+      );
+    } else if (!Number.isFinite(passportExpiry)) {
       manualReview = true;
       reasons.push("Passport expiry could not be checked against the maintained validity rule.");
     } else {

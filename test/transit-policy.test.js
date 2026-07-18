@@ -149,6 +149,24 @@ async function main() {
     "self-transfer-manual-review"
   );
 
+  const travelerConfirmedPassportValidity = await assess(
+    transferOffer,
+    [basePolicy],
+    {},
+    {
+      passportExpiresOn: null,
+      passportValidityConfirmedAgainstPublishedRules: true
+    }
+  );
+  assert.equal(
+    travelerConfirmedPassportValidity.assessment.status,
+    "self-transfer-acceptable"
+  );
+  assert.match(
+    travelerConfirmedPassportValidity.assessment.warnings.join(" "),
+    /Traveler confirmed/
+  );
+
   const insufficientPassportValidity = await assess(
     transferOffer,
     [basePolicy],

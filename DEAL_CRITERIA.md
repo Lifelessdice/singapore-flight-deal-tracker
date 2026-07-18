@@ -192,9 +192,10 @@ The current `manual-static` policy provider requires source metadata,
 `lastVerifiedAt`, passport validity, onward-travel requirements, visa and
 authorization fields, immigration permission, and terminal feasibility. Rules
 older than 30 days become manual review. `automation/transit-policies.example.json`
-documents the schema; its placeholder is not a production rule. The actual
-`passportExpiresOn` is intentionally unset until the traveler provides it, so
-passport-validity-dependent transfer rules remain manual review.
+documents the schema; its placeholder is not a production rule. The exact
+`passportExpiresOn` may remain private when
+`passportValidityConfirmedAgainstPublishedRules` records that the traveler has
+checked the maintained rule for the configured travel period.
 
 ## Primary references
 
