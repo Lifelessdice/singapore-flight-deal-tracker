@@ -165,6 +165,12 @@ every 48 hours, or approximately 180 SerpApi searches in a 30-day month. Exact
 verification uses the configured bag count, currently a free under-seat
 personal-item backpack with no paid carry-on or checked bag.
 
+After every completed search cycle, the worker sends either a deal alert or a
+no-deal heartbeat to every configured channel. The heartbeat reports how many
+live candidates were checked, how many flexible options were reviewed, and the
+three cheapest observed fares. Daily workflow wake-ups skipped by the 48-hour
+guard do not send a notification.
+
 ### 5. Verify before booking
 
 When an alert fires, open the included links:

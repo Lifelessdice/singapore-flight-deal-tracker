@@ -396,6 +396,48 @@ function formatAlert(candidates) {
   return lines.join("\n");
 }
 
+function formatNoDealSummary(candidates, options = {}) {
+  const discoveryResult = options.discoveryResult || {};
+  const dealCandidates = options.dealCandidates || [];
+  const checkIntervalHours = Number(options.checkIntervalHours || 48);
+  const lines = [
+    "Flight Tracker check complete",
+    "",
+    dealCandidates.length
+      ? `${dealCandidates.length} relative deal${dealCandidates.length === 1 ? "" : "s"} still qualified, but the alert cooldown prevented a duplicate deal alert.`
+      : "No new relative deals matched the alert criteria.",
+    `Checked ${candidates.length} live fare candidate${candidates.length === 1 ? "" : "s"}.`
+  ];
+
+  if (discoveryResult.exploredCandidates) {
+    lines.push(
+      `Flexible discovery reviewed ${discoveryResult.exploredCandidates} option${discoveryResult.exploredCandidates === 1 ? "" : "s"} for month ${discoveryResult.exploredMonth}.`
+    );
+  }
+
+  const cheapest = [...candidates]
+    .sort((a, b) => a.entry.price - b.entry.price)
+    .slice(0, 3);
+
+  if (cheapest.length) {
+    lines.push("", "Cheapest observed:");
+    cheapest.forEach(({ entry, insights }) => {
+      const dates = `${entry.departureDate}${entry.returnDate ? ` to ${entry.returnDate}` : ""}`;
+      lines.push(
+        `${entry.origin} -> ${entry.destination}, ${dates}: ${entry.currency} ${entry.price} ${entry.tripType}; ${insights.baselineSampleCount} prior comparable sample${insights.baselineSampleCount === 1 ? "" : "s"}; ${insights.level}.`
+      );
+    });
+  } else {
+    lines.push(
+      "",
+      "No live candidates were returned. Review the GitHub Actions log for API or route errors."
+    );
+  }
+
+  lines.push("", `The next completed automatic check is due in about ${checkIntervalHours} hours.`);
+  return lines.join("\n");
+}
+
 async function sendDiscord(message) {
   if (!process.env.DISCORD_WEBHOOK_URL) return;
 
@@ -410,7 +452,7 @@ async function sendDiscord(message) {
   }
 }
 
-async function sendResend(message) {
+async function sendResend(message, subject) {
   if (!process.env.RESEND_API_KEY || !process.env.ALERT_EMAIL_TO || !process.env.ALERT_EMAIL_FROM) return;
 
   const response = await fetch("https://api.resend.com/emails", {
@@ -422,13 +464,26 @@ async function sendResend(message) {
     body: JSON.stringify({
       from: process.env.ALERT_EMAIL_FROM,
       to: [process.env.ALERT_EMAIL_TO],
-      subject: "Flight deal candidates found",
+      subject,
       text: message
     })
   });
 
   if (!response.ok) {
     throw new Error(`Resend alert failed: ${response.status} ${await response.text()}`);
+  }
+}
+
+async function deliverNotifications(message, subject) {
+  const deliveries = await Promise.allSettled([
+    sendDiscord(message),
+    sendResend(message, subject)
+  ]);
+  const deliveryFailures = deliveries
+    .filter((delivery) => delivery.status === "rejected")
+    .map((delivery) => delivery.reason?.message || String(delivery.reason));
+  if (deliveryFailures.length) {
+    throw new Error(`Notification delivery failed: ${deliveryFailures.join("; ")}`);
   }
 }
 
@@ -522,23 +577,14 @@ async function main() {
   writeJson(HISTORY_PATH, nextHistory);
   const cooldownHours = Number(config.alertCooldownHours || 168);
   const alerts = state.alerts || {};
-  const alertCandidates = candidates
-    .filter(shouldAlert)
+  const dealCandidates = candidates.filter(shouldAlert);
+  const alertCandidates = dealCandidates
     .filter((candidate) => isFreshAlert(candidate, alerts, cooldownHours));
 
   if (alertCandidates.length) {
     const message = formatAlert(alertCandidates);
     console.log(message);
-    const deliveries = await Promise.allSettled([
-      sendDiscord(message),
-      sendResend(message)
-    ]);
-    const deliveryFailures = deliveries
-      .filter((delivery) => delivery.status === "rejected")
-      .map((delivery) => delivery.reason?.message || String(delivery.reason));
-    if (deliveryFailures.length) {
-      throw new Error(`Alert delivery failed: ${deliveryFailures.join("; ")}`);
-    }
+    await deliverNotifications(message, "Flight deal candidates found");
     alertCandidates.forEach((candidate) => {
       alerts[alertKey(candidate)] = {
         price: candidate.entry.price,
@@ -550,6 +596,15 @@ async function main() {
       ? ", including flexible discovery"
       : "";
     console.log(`Checked ${candidates.length} live fare candidates${discoveryNote}. No new relative deals found.`);
+    if (config.notifyOnNoDeals !== false) {
+      const summary = formatNoDealSummary(candidates, {
+        discoveryResult,
+        dealCandidates,
+        checkIntervalHours
+      });
+      console.log(summary);
+      await deliverNotifications(summary, "Flight Tracker check complete: no new deals");
+    }
   }
 
   writeJson(STATE_PATH, {
@@ -565,7 +620,14 @@ async function main() {
   });
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  formatNoDealSummary,
+  main
+};
