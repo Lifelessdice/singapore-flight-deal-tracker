@@ -415,5 +415,28 @@
     "baggageProfile": "one carry-on backpack",
     "notes": "TransNusa via Google Flights via SerpApi, 2h total, 0 stops, price filtered for 1 carry-on bag",
     "googlePriceInsights": null
+  },
+  {
+    "routeId": "sin-student-budget-aug-dec-2026",
+    "source": "Google Flights via SerpApi",
+    "price": 176,
+    "currency": "USD",
+    "origin": "SIN",
+    "destination": "CGK",
+    "departureDate": "2026-08-07",
+    "returnDate": "",
+    "tripType": "one-way",
+    "loggedAt": 1784356553769,
+    "leadTimeBucket": "15-30d",
+    "destinationName": null,
+    "averagePrice": null,
+    "discountPercentage": null,
+    "passportNationality": "Swiss",
+    "passportCountryCode": "CH",
+    "carryOnBags": 0,
+    "checkedBags": 0,
+    "baggageProfile": "one free under-seat personal-item backpack",
+    "notes": "TransNusa via Google Flights via SerpApi, 2h total, 0 stops",
+    "googlePriceInsights": null
   }
 ]
