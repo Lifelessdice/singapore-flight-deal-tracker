@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const {
+  alertKey,
   buildSplitTicketSearches,
+  combineRoundTripOffers,
   formatNoDealSummary,
   selectSearches,
   summarizeSplitTicketCandidate
@@ -21,9 +23,12 @@ const candidate = {
     baselineSampleCount: 2,
     level: "watching",
     confidence: "low",
+    confidenceBasis: "local observations only; no external statistical baseline returned",
     typicalMidpoint: null,
     typicalLow: null,
-    typicalHigh: null
+    typicalHigh: null,
+    marketBaselineAvailable: false,
+    marketPriceHistorySampleCount: 0
   },
   links: {
     googleFlights: "https://www.google.com/travel/flights?q=SIN%20KUL"
@@ -35,13 +40,24 @@ const noDeal = formatNoDealSummary([candidate], {
     exploredCandidates: 20,
     exploredMonth: 8
   },
+  splitTicketsChecked: 1,
+  splitComparisons: [{
+    origin: "SIN",
+    destination: "KUL",
+    currency: "USD",
+    splitPrice: 95,
+    roundTripPrice: 110
+  }],
   dealCandidates: [],
   checkIntervalHours: 48
 });
 assert.match(noDeal, /No new relative deals/);
 assert.match(noDeal, /SIN -> KUL/);
+assert.match(noDeal, /Sat 2026-08-01/);
 assert.match(noDeal, /USD 80/);
 assert.match(noDeal, /20 options/);
+assert.match(noDeal, /two one-ways vs USD 110 return/);
+assert.match(noDeal, /separate one-ways save USD 15/);
 assert.match(noDeal, /about 48 hours/);
 assert.match(noDeal, /AirAsia/);
 assert.match(noDeal, /2\/3 prior comparable samples/);
@@ -60,7 +76,15 @@ const discordSized = formatNoDealSummary([candidate, candidate, candidate], {
   discoveryResult: {
     exploredCandidates: 20,
     exploredMonth: 8
-  }
+  },
+  splitTicketsChecked: 1,
+  splitComparisons: [{
+    origin: "SIN",
+    destination: "KUL",
+    currency: "USD",
+    splitPrice: 95,
+    roundTripPrice: 110
+  }]
 });
 assert.ok(discordSized.length <= 1900);
 
@@ -126,9 +150,48 @@ assert.equal(splitCandidate.entry.price, 120);
 assert.equal(splitCandidate.entry.strategySavings, 30);
 assert.equal(splitCandidate.entry.strategySavingsPercent, 20);
 assert.equal(splitCandidate.insights.level, "strong-deal");
+assert.equal(splitCandidate.insights.confidence, "low");
 assert.ok(splitCandidate.insights.dealSignals.includes("separate-one-way-pricing"));
 assert.match(splitCandidate.links.outboundGoogleFlights, /SIN%20to%20KUL/);
 assert.match(splitCandidate.links.inboundGoogleFlights, /KUL%20to%20SIN/);
+
+const combinedRoundTrip = combineRoundTripOffers(
+  {
+    price: 150,
+    totalDurationMinutes: 90,
+    maxStops: 0,
+    airlines: ["Scoot"],
+    maxLayoverMinutes: 0,
+    hasOvernight: false,
+    baggageNotes: ["Personal item included"]
+  },
+  {
+    price: 155,
+    totalDurationMinutes: 100,
+    maxStops: 1,
+    airlines: ["AirAsia"],
+    flights: [{ flightNumber: "AK 701" }],
+    layovers: [{ airport: "KUL", durationMinutes: 60 }],
+    maxLayoverMinutes: 60,
+    hasOvernight: false,
+    baggageNotes: ["Cabin bag for a fee"],
+    bookingToken: "booking-token"
+  }
+);
+assert.equal(combinedRoundTrip.price, 155);
+assert.equal(combinedRoundTrip.verifiedRoundTrip, true);
+assert.equal(combinedRoundTrip.outboundDurationMinutes, 90);
+assert.equal(combinedRoundTrip.returnDurationMinutes, 100);
+assert.deepEqual(combinedRoundTrip.airlines, ["Scoot", "AirAsia"]);
+
+assert.notEqual(
+  alertKey({ entry: { ...candidate.entry, departureDate: "2026-08-01" } }),
+  alertKey({ entry: { ...candidate.entry, departureDate: "2026-08-08" } })
+);
+assert.notEqual(
+  alertKey({ entry: { ...candidate.entry } }),
+  alertKey({ entry: { ...candidate.entry, searchStrategy: "split-one-ways" } })
+);
 
 const rankedSearches = [
   baseSearch,

@@ -2,11 +2,14 @@ const assert = require("node:assert/strict");
 const {
   analyzeFareHistory,
   average,
+  dedupeDailyFareObservations,
   getLeadTimeBucket,
   hasSameBaggageProfile,
   median,
   medianAbsoluteDeviation
 } = require("../fare-insights");
+
+const DAY = 24 * 60 * 60 * 1000;
 
 assert.equal(median([300, 100, 200]), 200);
 assert.equal(median([100, 300]), 200);
@@ -24,14 +27,15 @@ assert.equal(hasSameBaggageProfile(
 ), false);
 
 const targetHit = analyzeFareHistory([
-  { source: "Google Flights", price: 320, loggedAt: 1 },
-  { source: "ITA Matrix", price: 280, loggedAt: 2 },
-  { source: "Skiplagged", price: 300, loggedAt: 3 },
-  { source: "Google Flights", price: 240, loggedAt: 4 }
+  { source: "Google Flights", price: 320, loggedAt: DAY },
+  { source: "ITA Matrix", price: 280, loggedAt: DAY * 2 },
+  { source: "Skiplagged", price: 300, loggedAt: DAY * 3 },
+  { source: "Google Flights", price: 240, loggedAt: DAY * 4 }
 ], 250);
 assert.equal(targetHit.level, "strong-deal");
 assert.equal(targetHit.targetHit, true);
-assert.equal(targetHit.confidence, "medium");
+assert.equal(targetHit.confidence, "low");
+assert.match(targetHit.confidenceBasis, /local observations only/);
 
 const targetOnlyNeedsHistory = analyzeFareHistory([
   { source: "Google Flights", price: 70, loggedAt: 1 }
@@ -40,10 +44,10 @@ assert.equal(targetOnlyNeedsHistory.level, "watching");
 assert.equal(targetOnlyNeedsHistory.latestVsMedianPct, null);
 
 const strongDeal = analyzeFareHistory([
-  { source: "Google Flights", price: 500, loggedAt: 1 },
-  { source: "Google Flights", price: 510, loggedAt: 2 },
-  { source: "ITA Matrix", price: 520, loggedAt: 2 },
-  { source: "Skiplagged", price: 390, loggedAt: 3 }
+  { source: "Google Flights", price: 500, loggedAt: DAY },
+  { source: "Google Flights", price: 510, loggedAt: DAY * 2 },
+  { source: "ITA Matrix", price: 520, loggedAt: DAY * 3 },
+  { source: "Skiplagged", price: 390, loggedAt: DAY * 4 }
 ], "");
 assert.equal(strongDeal.level, "strong-deal");
 assert.equal(strongDeal.latestVsMedianPct, -24);
@@ -51,22 +55,22 @@ assert.equal(strongDeal.averagePrice, 510);
 assert.equal(strongDeal.latestVsAveragePct, -24);
 assert.equal(strongDeal.savingsVsMedian, 120);
 assert.equal(strongDeal.savingsVsAverage, 120);
-assert.equal(strongDeal.robustZScore, -8.09);
+assert.equal(strongDeal.robustZScore, -3.17);
 assert.deepEqual(strongDeal.dealSignals, ["local-history", "robust-outlier"]);
 
 const wait = analyzeFareHistory([
-  { source: "Google Flights", price: 300, loggedAt: 1 },
-  { source: "ITA Matrix", price: 310, loggedAt: 2 },
-  { source: "Google Flights", price: 320, loggedAt: 3 },
-  { source: "Google Flights", price: 380, loggedAt: 4 }
+  { source: "Google Flights", price: 300, loggedAt: DAY },
+  { source: "ITA Matrix", price: 310, loggedAt: DAY * 2 },
+  { source: "Google Flights", price: 320, loggedAt: DAY * 3 },
+  { source: "Google Flights", price: 380, loggedAt: DAY * 4 }
 ], "");
 assert.equal(wait.level, "wait");
 
 const noisyHistory = analyzeFareHistory([
-  { source: "Google Flights", price: 100, loggedAt: 1 },
-  { source: "Google Flights", price: 150, loggedAt: 2 },
-  { source: "Google Flights", price: 200, loggedAt: 3 },
-  { source: "Google Flights", price: 130, loggedAt: 4 }
+  { source: "Google Flights", price: 100, loggedAt: DAY },
+  { source: "Google Flights", price: 150, loggedAt: DAY * 2 },
+  { source: "Google Flights", price: 200, loggedAt: DAY * 3 },
+  { source: "Google Flights", price: 130, loggedAt: DAY * 4 }
 ], "");
 assert.equal(noisyHistory.latestVsMedianPct, -13);
 assert.equal(noisyHistory.level, "watching");
@@ -78,13 +82,43 @@ const googleMarketDeal = analyzeFareHistory([
     loggedAt: 1,
     googlePriceInsights: {
       price_level: "low",
-      typical_price_range: [110, 130]
+      typical_price_range: [110, 130],
+      price_history: [
+        [1, 115],
+        [2, 120],
+        [3, 118],
+        [4, 125],
+        [5, 122],
+        [6, 119],
+        [7, 124]
+      ]
     }
   }
 ], "");
 assert.equal(googleMarketDeal.level, "strong-deal");
 assert.equal(googleMarketDeal.latestVsMarketPct, -33);
-assert.deepEqual(googleMarketDeal.dealSignals, ["google-typical-range"]);
+assert.deepEqual(
+  googleMarketDeal.dealSignals,
+  ["google-typical-range", "google-online-price-history"]
+);
+assert.equal(googleMarketDeal.confidence, "high");
+assert.equal(googleMarketDeal.marketPriceHistorySampleCount, 7);
+
+const repeatedSameDay = dedupeDailyFareObservations([
+  { price: 111, loggedAt: DAY + 1 },
+  { price: 111, loggedAt: DAY + 2 },
+  { price: 95, loggedAt: DAY + 3 }
+]);
+assert.equal(repeatedSameDay.length, 1);
+
+const roundedThreshold = analyzeFareHistory([
+  { price: 100, loggedAt: DAY },
+  { price: 100, loggedAt: DAY * 2 },
+  { price: 100, loggedAt: DAY * 3 },
+  { price: 90.4, loggedAt: DAY * 4 }
+], "");
+assert.equal(roundedThreshold.latestVsMedianPct, -10);
+assert.equal(roundedThreshold.level, "watching");
 
 const empty = analyzeFareHistory([], 200);
 assert.equal(empty.level, "watching");

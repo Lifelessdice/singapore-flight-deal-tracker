@@ -30,6 +30,20 @@
     return [...history].sort((a, b) => Number(a.loggedAt) - Number(b.loggedAt)).at(-1);
   }
 
+  function dedupeDailyFareObservations(history) {
+    const byDay = new Map();
+    [...(history || [])]
+      .sort((a, b) => Number(a.loggedAt) - Number(b.loggedAt))
+      .forEach((item) => {
+        const loggedAt = Number(item.loggedAt);
+        const day = Number.isFinite(loggedAt)
+          ? new Date(loggedAt).toISOString().slice(0, 10)
+          : `unknown-${byDay.size}`;
+        byDay.set(day, item);
+      });
+    return [...byDay.values()];
+  }
+
   function getLeadTimeBucket(departureDate, observedAt = Date.now()) {
     const departure = Date.parse(`${departureDate}T00:00:00Z`);
     const observed = Number(observedAt);
@@ -52,15 +66,26 @@
     const range = Array.isArray(insights?.typical_price_range)
       ? insights.typical_price_range.map(Number).filter(Number.isFinite)
       : [];
+    const priceHistory = Array.isArray(insights?.price_history)
+      ? insights.price_history
+        .map((point) => Number(Array.isArray(point) ? point[1] : null))
+        .filter((price) => Number.isFinite(price) && price > 0)
+      : [];
     const typicalLow = range.length === 2 ? Math.min(...range) : null;
     const typicalHigh = range.length === 2 ? Math.max(...range) : null;
     const typicalMidpoint = range.length === 2 ? median(range) : null;
     const priceLevel = String(insights?.price_level || "").toLowerCase() || null;
-    return { priceLevel, typicalLow, typicalHigh, typicalMidpoint };
+    return {
+      priceLevel,
+      priceHistory,
+      typicalLow,
+      typicalHigh,
+      typicalMidpoint
+    };
   }
 
   function analyzeFareHistory(history, targetFare, options = {}) {
-    const ordered = [...(history || [])].sort((a, b) => Number(a.loggedAt) - Number(b.loggedAt));
+    const ordered = dedupeDailyFareObservations(history);
     const prices = toPrices(ordered);
     const latest = latestFare(history);
     const latestPrice = latest ? Number(latest.price) : null;
@@ -73,12 +98,14 @@
     const target = Number(targetFare);
     const hasTarget = Number.isFinite(target) && target > 0;
     const targetHit = hasTarget && latestPrice !== null && latestPrice <= target;
-    const latestVsMedianPct = latestPrice !== null && medianPrice && hasLocalBaseline
-      ? Math.round(((latestPrice - medianPrice) / medianPrice) * 100)
+    const latestVsMedianRaw = latestPrice !== null && medianPrice && hasLocalBaseline
+      ? ((latestPrice - medianPrice) / medianPrice) * 100
       : null;
-    const latestVsAveragePct = latestPrice !== null && averagePrice && hasLocalBaseline
-      ? Math.round(((latestPrice - averagePrice) / averagePrice) * 100)
+    const latestVsMedianPct = latestVsMedianRaw === null ? null : Math.round(latestVsMedianRaw);
+    const latestVsAverageRaw = latestPrice !== null && averagePrice && hasLocalBaseline
+      ? ((latestPrice - averagePrice) / averagePrice) * 100
       : null;
+    const latestVsAveragePct = latestVsAverageRaw === null ? null : Math.round(latestVsAverageRaw);
     const savingsVsMedian = latestPrice !== null && medianPrice && hasLocalBaseline
       ? Math.max(0, Math.round(medianPrice - latestPrice))
       : null;
@@ -86,25 +113,55 @@
       ? Math.max(0, Math.round(averagePrice - latestPrice))
       : null;
     const mad = hasLocalBaseline ? medianAbsoluteDeviation(baselinePrices) : null;
-    const robustZScore = latestPrice !== null && medianPrice && mad
-      ? Number((0.6745 * (latestPrice - medianPrice) / mad).toFixed(2))
+    const localDispersion = hasLocalBaseline && medianPrice
+      ? Math.max(Number(mad) || 0, medianPrice * 0.05)
+      : null;
+    const robustZScore = latestPrice !== null && medianPrice && localDispersion
+      ? Number((0.6745 * (latestPrice - medianPrice) / localDispersion).toFixed(2))
       : null;
     const market = marketContext(latest, options.marketInsights);
-    const latestVsMarketPct = latestPrice !== null && market.typicalMidpoint
-      ? Math.round(((latestPrice - market.typicalMidpoint) / market.typicalMidpoint) * 100)
+    const latestVsMarketRaw = latestPrice !== null && market.typicalMidpoint
+      ? ((latestPrice - market.typicalMidpoint) / market.typicalMidpoint) * 100
+      : null;
+    const latestVsMarketPct = latestVsMarketRaw === null ? null : Math.round(latestVsMarketRaw);
+    const marketHistoryMedian = median(market.priceHistory);
+    const marketHistoryMad = medianAbsoluteDeviation(market.priceHistory);
+    const marketHistoryDispersion = marketHistoryMedian
+      ? Math.max(Number(marketHistoryMad) || 0, marketHistoryMedian * 0.05)
+      : null;
+    const latestVsMarketHistoryRaw = latestPrice !== null && marketHistoryMedian
+      ? ((latestPrice - marketHistoryMedian) / marketHistoryMedian) * 100
+      : null;
+    const latestVsMarketHistoryPct = latestVsMarketHistoryRaw === null
+      ? null
+      : Math.round(latestVsMarketHistoryRaw);
+    const marketHistoryZScore = latestPrice !== null && marketHistoryMedian && marketHistoryDispersion
+      ? Number((0.6745 * (latestPrice - marketHistoryMedian) / marketHistoryDispersion).toFixed(2))
       : null;
 
-    const statisticallyLow = robustZScore === null || robustZScore <= -1;
-    const localGood = latestVsMedianPct !== null && latestVsMedianPct <= -10 && statisticallyLow;
-    const localStrong = latestVsMedianPct !== null && latestVsMedianPct <= -20 &&
-      (robustZScore === null || robustZScore <= -2);
-    const marketGood = latestPrice !== null && market.typicalLow !== null &&
-      latestPrice < market.typicalLow &&
-      (market.priceLevel === "low" || latestVsMarketPct <= -10);
-    const marketStrong = marketGood && latestVsMarketPct <= -20;
+    const localGood = latestVsMedianRaw !== null && latestVsMedianRaw <= -10 &&
+      robustZScore !== null && robustZScore <= -1;
+    const localStrong = latestVsMedianRaw !== null && latestVsMedianRaw <= -20 &&
+      robustZScore !== null && robustZScore <= -2;
+    const marketRangeGood = latestPrice !== null && market.typicalMidpoint !== null && (
+      latestPrice < market.typicalLow ||
+      (market.priceLevel === "low" && latestVsMarketRaw <= -10)
+    );
+    const marketHistoryGood = market.priceHistory.length >= 7 &&
+      latestVsMarketHistoryRaw !== null &&
+      latestVsMarketHistoryRaw <= -10 &&
+      marketHistoryZScore !== null &&
+      marketHistoryZScore <= -1;
+    const marketGood = marketRangeGood || marketHistoryGood;
+    const marketStrong = (
+      marketRangeGood && latestVsMarketRaw <= -20
+    ) || (
+      marketHistoryGood && latestVsMarketHistoryRaw <= -20 && marketHistoryZScore <= -2
+    );
     const dealSignals = [
       localGood ? "local-history" : null,
-      marketGood ? "google-typical-range" : null,
+      marketRangeGood ? "google-typical-range" : null,
+      marketHistoryGood ? "google-online-price-history" : null,
       localStrong ? "robust-outlier" : null
     ].filter(Boolean);
 
@@ -120,15 +177,26 @@
       level = "wait";
     }
 
-    const confidence = hasLocalBaseline && market.typicalMidpoint && baselinePrices.length >= 6
+    const hasTypicalMarketBaseline = market.typicalMidpoint !== null;
+    const hasOnlinePriceHistory = market.priceHistory.length >= 7;
+    const externalBaselineCount = Number(hasTypicalMarketBaseline) + Number(hasOnlinePriceHistory);
+    const confidence = externalBaselineCount >= 2
       ? "high"
-      : hasLocalBaseline || market.typicalMidpoint
+      : externalBaselineCount === 1
         ? "medium"
         : "low";
+    const confidenceBasis = externalBaselineCount >= 2
+      ? `Google's similar-flight typical range and ${market.priceHistory.length} online price-history points`
+      : hasTypicalMarketBaseline
+        ? "Google's online typical range for similar flights"
+        : hasOnlinePriceHistory
+          ? `${market.priceHistory.length} Google online price-history points`
+          : "local observations only; no external statistical baseline returned";
 
     return {
       sampleCount: prices.length,
       baselineSampleCount: baselinePrices.length,
+      rawObservationCount: (history || []).length,
       sourceCount,
       latest,
       latestPrice,
@@ -147,15 +215,23 @@
       typicalHigh: market.typicalHigh,
       typicalMidpoint: market.typicalMidpoint,
       latestVsMarketPct,
+      marketPriceHistorySampleCount: market.priceHistory.length,
+      marketHistoryMedian,
+      marketHistoryMad,
+      latestVsMarketHistoryPct,
+      marketHistoryZScore,
+      marketBaselineAvailable: externalBaselineCount > 0,
       dealSignals,
       level,
-      confidence
+      confidence,
+      confidenceBasis
     };
   }
 
   const api = {
     analyzeFareHistory,
     average,
+    dedupeDailyFareObservations,
     getLeadTimeBucket,
     hasSameBaggageProfile,
     median,

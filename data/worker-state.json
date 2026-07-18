@@ -1,12 +1,31 @@
 {
-  "cursor": 25,
+  "cursor": 26,
   "totalSearches": 644,
-  "checkedThisRun": 8,
-  "discoveryMonthCursor": 1,
-  "exploredMonth": 8,
-  "exploredCandidates": 20,
+  "checkedThisRun": 1,
+  "discoveryMonthCursor": 2,
+  "exploredMonth": 9,
+  "exploredCandidates": 27,
   "flexibleDealsChecked": 3,
   "splitTicketsChecked": 1,
-  "lastCompletedAt": "2026-07-18T07:14:30.445Z",
+  "splitComparisons": [
+    {
+      "origin": "SIN",
+      "destination": "KUL",
+      "departureDate": "2026-09-24",
+      "returnDate": "2026-09-28",
+      "currency": "USD",
+      "splitPrice": 109,
+      "roundTripPrice": 110
+    }
+  ],
+  "returnVerificationsAttempted": 0,
+  "returnVerificationsPassed": 0,
+  "providerStats": {
+    "attempted": 1,
+    "successful": 1,
+    "failed": 0,
+    "errors": []
+  },
+  "lastCompletedAt": "2026-07-18T07:35:05.148Z",
   "alerts": {}
 }

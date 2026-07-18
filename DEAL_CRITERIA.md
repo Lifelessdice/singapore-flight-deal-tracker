@@ -18,7 +18,7 @@ number.
 | Dates | Weekends are seeded heavily; weekday departures are also eligible |
 | Ticket types | Round trips and one ways |
 | Stops | At most 1 |
-| Total itinerary duration | At most 15 hours |
+| Duration | At most 15 hours per direction |
 | Listed destinations | 14 nearby Asian airports |
 | Open-ended discovery | Google Travel Explore searches every configured month |
 | Discovery verification | The three most useful Explore results are re-priced as exact Google Flights searches |
@@ -33,30 +33,36 @@ booking.
 
 ## What earns an alert
 
-A fare can qualify through local history, Google's independent market baseline,
-or an explicit target:
+A fare can qualify through closely matched independent history or Google's
+online market statistics:
 
 1. **Local relative deal:** compare the new fare with at least three prior
-   observations for the same origin, destination, and trip type. When enough
-   observations exist, compare only fares from the same booking lead-time bucket.
+   observation days matching origin, destination, trip type, booking lead-time
+   bucket, travel month, trip length, weekend pattern, baggage, and ticket
+   strategy. Repeated checks on the same day count once.
 2. **Good deal:** at least 10% below the prior median and statistically unusual
-   under a median absolute deviation test.
+   under a median absolute deviation test with a 5% dispersion floor.
 3. **Strong deal:** at least 20% below the prior median with a robust z-score of
    `-2` or lower.
 4. **Google market deal:** below the low end of Google's typical-price range, or
-   sufficiently below its midpoint when Google labels the fare low.
-5. **Target hit:** at or below a configured target. The alert still shows the
-   relative evidence so an arbitrary target is not mistaken for a market anomaly.
+   sufficiently below its midpoint when Google labels the fare low. At least
+   seven points from Google's online price history can provide a second external
+   anomaly test.
+5. **Target hit:** at or below a configured target is useful context, but never
+   earns an alert without relative evidence.
 
 The current fare is excluded from its own baseline. This matters because including
 a large drop in the median and average weakens the apparent discount. Median
 absolute deviation is used instead of standard deviation because a small fare
 history often contains large seasonal outliers.
 
-Alerts show the prior median and average, percentage discount, estimated savings,
-Google's typical range when available, baseline scope, confidence, dates, duration,
-stops, and links for verification. A route is muted for seven days after an alert
-unless a lower fare appears.
+Confidence does not increase merely because this tracker collected more samples.
+One Google external baseline earns medium confidence; both the similar-flight
+typical range and online price history earn high confidence. Local-only signals
+remain low confidence. Alerts show the evidence basis, prior median and average,
+percentage discount, estimated savings, Google's statistics, dates, per-direction
+duration, stops, and links. Cooldowns are specific to route, dates, trip type, and
+ticket strategy.
 
 ## Discovery strategy
 
@@ -66,6 +72,12 @@ the stop, duration, and price limits. It then verifies two of the cheapest known
 destinations plus one promising destination outside the fixed list. Exact
 verification is important because discovery prices can be stale or can represent
 a different itinerary than the one ultimately booked.
+
+SerpApi's first round-trip response describes the outbound selection. Before a
+round-trip price signal can alert, the worker follows its `departure_token` and
+requires a compatible return to pass the stop and duration rules without a
+self-transfer or airport change. At most three such calls are spent per cycle,
+and unverified returns are suppressed.
 
 The normal queue prioritizes routes that have been checked least recently, then
 rotates their exact dates inside a 90-day booking horizon. Six of the eight slots
@@ -134,11 +146,13 @@ not create a missed-connection risk on the return.
 ## Search frequency and quota
 
 GitHub Actions wakes once per day, but the worker only performs a scheduled fare
-cycle after approximately 48 hours. Each normal cycle uses up to 14 SerpApi
+cycle after approximately 48 hours. Each normal no-deal cycle uses up to 14 SerpApi
 searches: one flexible Explore search, three exact verifications, two split-ticket
 checks, and eight prioritized route/date searches. That is approximately 210
 searches in a 30-day month, leaving about 40 of the current 250 free searches for
-manual QA. Manual smoke tests disable Explore and default to one exact search.
+manual QA and selective return resolution. A cycle with alertable returns can
+spend up to three of those reserve calls. Manual smoke tests disable Explore and
+default to one exact search.
 
 Alerts do not claim that a destination is visa-feasible. Entry and transit rules
 can change and must be verified for the Swiss passport before booking.
@@ -161,6 +175,8 @@ so changing baggage assumptions cannot manufacture an artificial price drop.
   <https://support.google.com/faqs/answer/2736487>
 - SerpApi Google Travel Explore parameters:
   <https://serpapi.com/google-travel-explore-api>
+- SerpApi Google Flights return tokens, price insights, and deep search:
+  <https://serpapi.com/google-flights-api>
 - FlightClaw:
   <https://github.com/jackculpan/flightclaw>
 - Flight Finder:

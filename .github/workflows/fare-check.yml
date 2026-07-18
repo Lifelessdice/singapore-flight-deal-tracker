@@ -25,12 +25,16 @@ concurrency:
 jobs:
   check-fares:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+
+      - name: Run tests
+        run: npm run check
 
       - name: Check fares
         env:
@@ -39,6 +43,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          REQUIRE_NOTIFICATION_CHANNEL: "true"
           FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' }}
           MAX_SEARCHES_PER_RUN: ${{ inputs.max_searches }}
           DISCOVERY_ENABLED: ${{ github.event_name != 'workflow_dispatch' || inputs.run_discovery }}

@@ -61,6 +61,15 @@ function getItaMatrixUrl() {
   return "https://matrix.itasoftware.com/search";
 }
 
+function formatTravelDate(date) {
+  if (!date) return "";
+  const weekday = new Intl.DateTimeFormat("en", {
+    weekday: "short",
+    timeZone: "UTC"
+  }).format(new Date(`${date}T00:00:00Z`));
+  return `${weekday} ${date}`;
+}
+
 function buildSearches(route) {
   const origins = route.originLocationCodes || [route.originLocationCode || route.origin];
   const destinations = route.destinationLocationCodes || [route.destinationLocationCode || route.destination];
@@ -198,7 +207,60 @@ function buildSplitTicketSearches(roundTripSearch) {
   ];
 }
 
-async function searchSerpApi(search) {
+function mapSerpApiOffer(offer, search, priceInsights) {
+  const flights = (offer.flights || []).map((flight) => ({
+    airline: flight.airline || "",
+    flightNumber: flight.flight_number || "",
+    departureAirport: flight.departure_airport?.id || "",
+    departureTime: flight.departure_airport?.time || "",
+    arrivalAirport: flight.arrival_airport?.id || "",
+    arrivalTime: flight.arrival_airport?.time || "",
+    durationMinutes: Number(flight.duration) || 0,
+    overnight: Boolean(flight.overnight),
+    oftenDelayed: Boolean(flight.often_delayed_by_over_30_min)
+  }));
+  const layovers = (offer.layovers || []).map((layover) => ({
+    airport: layover.id || "",
+    durationMinutes: Number(layover.duration) || 0,
+    overnight: Boolean(layover.overnight)
+  }));
+  const extensions = [
+    ...(offer.extensions || []),
+    ...(offer.flights || []).flatMap((flight) => flight.extensions || [])
+  ].map(String);
+  const hasAirportChange = flights.some((flight, index) => (
+    index > 0 && flights[index - 1].arrivalAirport !== flight.departureAirport
+  ));
+  const hasSelfTransfer = extensions.some((extension) => (
+    /separate tickets|self[- ]transfer/i.test(extension)
+  ));
+
+  return {
+    source: "Google Flights via SerpApi",
+    price: Number(offer.price),
+    currency: search.currencyCode,
+    itineraries: offer.type || search.tripType,
+    totalDurationMinutes: Number(offer.total_duration) || 0,
+    maxStops: layovers.length,
+    airlines: [...new Set(flights.map((flight) => flight.airline).filter(Boolean))],
+    flights,
+    layovers,
+    maxLayoverMinutes: layovers.reduce(
+      (longest, layover) => Math.max(longest, layover.durationMinutes),
+      0
+    ),
+    hasAirportChange,
+    hasSelfTransfer,
+    hasOvernight: flights.some((flight) => flight.overnight) ||
+      layovers.some((layover) => layover.overnight),
+    baggageNotes: extensions.filter((extension) => /bag|carry-on|personal item/i.test(extension)),
+    rawId: offer.departure_token || "",
+    bookingToken: offer.booking_token || "",
+    googlePriceInsights: priceInsights || null
+  };
+}
+
+async function searchSerpApi(search, options = {}) {
   assertEnv("SERPAPI_API_KEY");
 
   const url = new URL(SERPAPI_BASE_URL);
@@ -216,6 +278,10 @@ async function searchSerpApi(search) {
   url.searchParams.set("gl", "sg");
   url.searchParams.set("hl", "en");
   url.searchParams.set("show_hidden", "true");
+  url.searchParams.set("deep_search", "true");
+  if (options.departureToken) {
+    url.searchParams.set("departure_token", options.departureToken);
+  }
   if (search.carryOnBags) url.searchParams.set("bags", String(search.carryOnBags));
   if (search.maxStops === 0 || search.nonStop === true) url.searchParams.set("stops", "1");
   if (search.maxStops === 1) url.searchParams.set("stops", "2");
@@ -237,31 +303,71 @@ async function searchSerpApi(search) {
   }
 
   const rawFlights = [...(data.best_flights || []), ...(data.other_flights || [])];
-  const offers = rawFlights.map((offer) => {
-    const maxStops = (offer.layovers || []).length;
-    const totalDurationMinutes = Number(offer.total_duration) || 0;
-    const airlines = [...new Set((offer.flights || []).map((flight) => flight.airline).filter(Boolean))];
-
-    return {
-      source: "Google Flights via SerpApi",
-      price: Number(offer.price),
-      currency: search.currencyCode,
-      itineraries: offer.type || search.tripType,
-      totalDurationMinutes,
-      maxStops,
-      airlines,
-      rawId: offer.departure_token || "",
-      googlePriceInsights: data.price_insights || null
-    };
-  }).filter((offer) => Number.isFinite(offer.price))
+  const offers = rawFlights
+    .map((offer) => mapSerpApiOffer(offer, search, data.price_insights))
+    .filter((offer) => Number.isFinite(offer.price))
     .filter((offer) => !search.maxTotalDurationMinutes || offer.totalDurationMinutes <= search.maxTotalDurationMinutes)
     .filter((offer) => search.maxStops === null || offer.maxStops <= search.maxStops);
 
   return { ok: true, offers };
 }
 
+async function verifyRoundTripOffer(search, outboundOffer, searchFunction = searchSerpApi) {
+  if (!search.returnDate || !outboundOffer.rawId) {
+    return { ok: false, error: "Round-trip return verification token was unavailable." };
+  }
+  const result = await searchFunction(search, { departureToken: outboundOffer.rawId });
+  if (!result.ok) return result;
+  const returnOffer = [...result.offers].sort((a, b) => a.price - b.price)[0];
+  if (!returnOffer) {
+    return { ok: false, error: "No compatible return passed the duration and stop limits." };
+  }
+  if (returnOffer.hasSelfTransfer || returnOffer.hasAirportChange) {
+    return {
+      ok: false,
+      error: "The compatible return requires a self-transfer or airport change."
+    };
+  }
+
+  return {
+    ok: true,
+    offer: combineRoundTripOffers(outboundOffer, returnOffer)
+  };
+}
+
+function combineRoundTripOffers(outboundOffer, returnOffer) {
+  return {
+    ...outboundOffer,
+    price: returnOffer.price,
+    totalDurationMinutes: outboundOffer.totalDurationMinutes + returnOffer.totalDurationMinutes,
+    maxStops: Math.max(outboundOffer.maxStops, returnOffer.maxStops),
+    airlines: [...new Set([...outboundOffer.airlines, ...returnOffer.airlines])],
+    returnDurationMinutes: returnOffer.totalDurationMinutes,
+    outboundDurationMinutes: outboundOffer.totalDurationMinutes,
+    returnFlights: returnOffer.flights,
+    returnLayovers: returnOffer.layovers,
+    maxLayoverMinutes: Math.max(
+      outboundOffer.maxLayoverMinutes || 0,
+      returnOffer.maxLayoverMinutes || 0
+    ),
+    hasOvernight: outboundOffer.hasOvernight || returnOffer.hasOvernight,
+    baggageNotes: [...new Set([
+      ...(outboundOffer.baggageNotes || []),
+      ...(returnOffer.baggageNotes || [])
+    ])],
+    bookingToken: returnOffer.bookingToken,
+    verifiedRoundTrip: true
+  };
+}
+
 async function searchGoogleTravelExplore(discovery, state, knownDestinations) {
-  if (!discovery?.enabled) return { ok: true, searches: [], nextMonthCursor: 0 };
+  if (!discovery?.enabled) {
+    return {
+      ok: true,
+      searches: [],
+      nextMonthCursor: Number(state.discoveryMonthCursor || 0)
+    };
+  }
   assertEnv("SERPAPI_API_KEY");
 
   const months = discovery.months || [];
@@ -372,6 +478,22 @@ async function searchGoogleTravelExplore(discovery, state, knownDestinations) {
 function summarizeCandidate(search, offer, history) {
   const loggedAt = Date.now();
   const leadTimeBucket = getLeadTimeBucket(search.departureDate, loggedAt);
+  const tripLengthDays = search.returnDate
+    ? Math.round((
+      Date.parse(`${search.returnDate}T00:00:00Z`) -
+      Date.parse(`${search.departureDate}T00:00:00Z`)
+    ) / (24 * 60 * 60 * 1000))
+    : null;
+  const departureDay = new Date(`${search.departureDate}T00:00:00Z`).getUTCDay();
+  const weekendDeparture = departureDay === 5 || departureDay === 6;
+  const durationDescription = offer.verifiedRoundTrip
+    ? `${Math.round(offer.outboundDurationMinutes / 60)}h outbound and ${Math.round(offer.returnDurationMinutes / 60)}h return`
+    : search.returnDate
+      ? `${Math.round(offer.totalDurationMinutes / 60)}h outbound; return verified only before an alert`
+      : `${Math.round(offer.totalDurationMinutes / 60)}h`;
+  const baggageDescription = offer.baggageNotes?.length
+    ? `fare notes: ${offer.baggageNotes.join("; ")}`
+    : "personal-item allowance not confirmed by the flight feed";
   const entry = {
     routeId: search.routeId,
     source: offer.source,
@@ -384,6 +506,8 @@ function summarizeCandidate(search, offer, history) {
     tripType: search.tripType,
     loggedAt,
     leadTimeBucket,
+    tripLengthDays,
+    weekendDeparture,
     destinationName: search.destinationName || null,
     averagePrice: offer.averagePrice || null,
     discountPercentage: offer.discountPercentage || null,
@@ -392,19 +516,38 @@ function summarizeCandidate(search, offer, history) {
     carryOnBags: search.carryOnBags || 0,
     checkedBags: search.checkedBags || 0,
     baggageProfile: search.baggageProfile || null,
-    notes: `${offer.airlines.join(", ") || "carrier unknown"} via ${offer.source}, ${Math.round(offer.totalDurationMinutes / 60)}h total, ${offer.maxStops} stop${offer.maxStops === 1 ? "" : "s"}${search.carryOnBags ? `, price filtered for ${search.carryOnBags} carry-on bag` : ""}`,
+    returnVerified: Boolean(offer.verifiedRoundTrip),
+    notes: `${offer.airlines.join(", ") || "carrier unknown"} via ${offer.source}, ${durationDescription}, maximum ${offer.maxStops} stop${offer.maxStops === 1 ? "" : "s"} per direction, ${baggageDescription}`,
     googlePriceInsights: offer.googlePriceInsights
   };
   const routeHistory = history.filter((item) => (
     item.origin === search.origin &&
     item.destination === search.destination &&
     (item.tripType || (item.returnDate ? "round-trip" : "one-way")) === search.tripType &&
-    hasSameBaggageProfile(item, search)
+    hasSameBaggageProfile(item, search) &&
+    (item.searchStrategy || "standard") === (search.searchStrategy || "standard")
   ));
-  const sameLeadTimeHistory = routeHistory.filter((item) => (
-    (item.leadTimeBucket || getLeadTimeBucket(item.departureDate, item.loggedAt)) === leadTimeBucket
-  ));
-  const comparisonHistory = sameLeadTimeHistory.length >= 3 ? sameLeadTimeHistory : routeHistory;
+  const comparisonHistory = routeHistory.filter((item) => {
+    const itemDepartureDay = new Date(`${item.departureDate}T00:00:00Z`).getUTCDay();
+    const itemWeekendDeparture = item.weekendDeparture ??
+      (itemDepartureDay === 5 || itemDepartureDay === 6);
+    const itemMonth = String(item.departureDate || "").slice(0, 7);
+    const itemTripLengthDays = item.returnDate
+      ? Math.round((
+        Date.parse(`${item.returnDate}T00:00:00Z`) -
+        Date.parse(`${item.departureDate}T00:00:00Z`)
+      ) / (24 * 60 * 60 * 1000))
+      : null;
+    const sameTripLength = tripLengthDays === null
+      ? !item.returnDate
+      : Math.abs(Number(item.tripLengthDays ?? itemTripLengthDays) - tripLengthDays) <= 1;
+    return (
+      (item.leadTimeBucket || getLeadTimeBucket(item.departureDate, item.loggedAt)) === leadTimeBucket &&
+      itemMonth === search.departureDate.slice(0, 7) &&
+      itemWeekendDeparture === weekendDeparture &&
+      sameTripLength
+    );
+  });
   const insights = analyzeFareHistory([...comparisonHistory, entry], search.maxPrice, {
     marketInsights: offer.googlePriceInsights
   });
@@ -413,8 +556,10 @@ function summarizeCandidate(search, offer, history) {
     entry,
     insights: {
       ...insights,
-      baselineScope: sameLeadTimeHistory.length >= 3 ? `lead time ${leadTimeBucket}` : "route and trip type"
+      baselineScope: `matching ${leadTimeBucket} lead time, month, trip length, and weekend pattern`
     },
+    search,
+    offer,
     links: {
       googleFlights: getGoogleFlightsUrl(search),
       itaMatrix: getItaMatrixUrl(search),
@@ -452,7 +597,8 @@ function summarizeSplitTicketCandidate(
   const candidate = summarizeCandidate(
     {
       ...roundTripSearch,
-      routeId: `split-${roundTripSearch.origin}-${roundTripSearch.destination}`
+      routeId: `split-${roundTripSearch.origin}-${roundTripSearch.destination}`,
+      searchStrategy: "split-one-ways"
     },
     splitOffer,
     history
@@ -474,9 +620,17 @@ function summarizeSplitTicketCandidate(
   const strongSavingsPercent = Number(splitConfig.strongSavingsPercent || 20);
   const qualifies = savings >= minimumSavingsUsd && savingsPercent >= minimumSavingsPercent;
   const strong = savings >= strongSavingsUsd && savingsPercent >= strongSavingsPercent;
+  const roundTripInsights = roundTripCandidate.insights || {};
   if (qualifies) {
     candidate.insights.level = strong ? "strong-deal" : "good-deal";
-    candidate.insights.confidence = "medium";
+    candidate.insights.confidence = roundTripInsights.marketBaselineAvailable
+      ? "medium"
+      : "low";
+    candidate.insights.confidenceBasis = roundTripInsights.marketBaselineAvailable
+      ? `live separate-ticket comparison plus ${roundTripInsights.confidenceBasis}`
+      : "one live separate-ticket comparison; no external statistical baseline returned";
+    candidate.insights.marketBaselineAvailable =
+      Boolean(roundTripInsights.marketBaselineAvailable);
     candidate.insights.dealSignals = [
       ...new Set([...candidate.insights.dealSignals, "separate-one-way-pricing"])
     ];
@@ -493,7 +647,14 @@ function shouldAlert(candidate) {
 
 function alertKey(candidate) {
   const entry = candidate.entry;
-  return [entry.origin, entry.destination, entry.tripType].join(":");
+  return [
+    entry.origin,
+    entry.destination,
+    entry.tripType,
+    entry.departureDate,
+    entry.returnDate || "",
+    entry.searchStrategy || "standard"
+  ].join(":");
 }
 
 function isFreshAlert(candidate, alerts, cooldownHours) {
@@ -519,9 +680,15 @@ function formatAlert(candidates) {
       ? "Google typical range unavailable"
       : `${Math.abs(insights.latestVsMarketPct)}% ${insights.latestVsMarketPct <= 0 ? "below" : "above"} Google's typical midpoint`;
 
-    lines.push(`${entry.origin} -> ${entry.destination} ${entry.departureDate}${entry.returnDate ? ` to ${entry.returnDate}` : ""}`);
+    lines.push(`${entry.origin} -> ${entry.destination} ${formatTravelDate(entry.departureDate)}${entry.returnDate ? ` to ${formatTravelDate(entry.returnDate)}` : ""}`);
     lines.push(`${entry.currency} ${entry.price} | ${entry.tripType} | ${insights.level} | confidence ${insights.confidence}`);
-    lines.push(`Analysis: ${medianDelta}; ${averageDelta}; ${marketDelta}; baseline ${insights.baselineScope}; ${insights.baselineSampleCount} prior samples.`);
+    lines.push(`Confidence basis: ${insights.confidenceBasis || "external market evidence unavailable"}.`);
+    lines.push(`Analysis: ${medianDelta}; ${averageDelta}; ${marketDelta}; baseline ${insights.baselineScope}; ${insights.baselineSampleCount} independent prior days.`);
+    if (insights.marketPriceHistorySampleCount) {
+      lines.push(
+        `Online market history: ${insights.marketPriceHistorySampleCount} Google price points; current fare is ${Math.abs(insights.latestVsMarketHistoryPct)}% ${insights.latestVsMarketHistoryPct <= 0 ? "below" : "above"} their median of ${entry.currency} ${insights.marketHistoryMedian}.`
+      );
+    }
     if (entry.discountPercentage) {
       lines.push(`Google deal context: ${entry.discountPercentage}% below its average fare of ${entry.currency} ${entry.averagePrice}.`);
     }
@@ -534,6 +701,13 @@ function formatAlert(candidates) {
     if (entry.searchStrategy === "split-one-ways") {
       lines.push(
         `Split-ticket advantage: ${entry.currency} ${entry.strategySavings} (${entry.strategySavingsPercent}%) below the same-run round-trip fare of ${entry.currency} ${entry.roundTripComparisonPrice}. These are independent outbound and return bookings.`
+      );
+    }
+    if (entry.tripType === "round-trip" && entry.searchStrategy !== "split-one-ways") {
+      lines.push(
+        entry.returnVerified
+          ? "Itinerary check: both outbound and return passed the configured duration, stop, airport-change, and self-transfer checks."
+          : "Itinerary check: return could not be verified; this candidate should not have been alerted."
       );
     }
     if (entry.passportNationality || entry.baggageProfile) {
@@ -559,10 +733,13 @@ function formatAlert(candidates) {
 }
 
 function explainNoDeal(insights, entry = {}) {
+  if (entry.verificationError) {
+    return `the price signal qualified, but the return itinerary was not safe to alert: ${entry.verificationError}`;
+  }
   if (entry.searchStrategy === "split-one-ways" && !insights.strategyQualifies) {
     return `separate one-ways save ${entry.currency} ${entry.strategySavings} (${entry.strategySavingsPercent}%); this needs both ${entry.currency} ${entry.strategyMinimumSavingsUsd} and ${entry.strategyMinimumSavingsPercent}% savings to qualify`;
   }
-  if (insights.baselineSampleCount < 3 && insights.typicalMidpoint === null) {
+  if (insights.baselineSampleCount < 3 && !insights.marketBaselineAvailable) {
     const remaining = 3 - insights.baselineSampleCount;
     return `baseline building; needs ${remaining} more comparable sample${remaining === 1 ? "" : "s"} unless Google supplies a typical-price range`;
   }
@@ -586,11 +763,14 @@ function explainNoDeal(insights, entry = {}) {
   if (insights.targetHit) {
     return "inside the budget target, but not yet supported by relative-deal evidence";
   }
-  return "no qualifying local-history or Google typical-price signal";
+  return "no qualifying independent local-history or Google online market signal";
 }
 
 function formatHistoryAnalysis(entry, insights) {
-  const parts = [`${insights.confidence} confidence`];
+  const parts = [
+    `${insights.confidence} confidence`,
+    insights.confidenceBasis || "no external statistical baseline returned"
+  ];
   if (entry.searchStrategy === "split-one-ways") {
     parts.push(
       `${entry.currency} ${entry.strategySavings} (${entry.strategySavingsPercent}%) below same-run round trip`
@@ -608,6 +788,11 @@ function formatHistoryAnalysis(entry, insights) {
   }
   if (insights.typicalLow !== null && insights.typicalHigh !== null) {
     parts.push(`Google typical range ${entry.currency} ${insights.typicalLow}-${insights.typicalHigh}`);
+  }
+  if (insights.marketPriceHistorySampleCount) {
+    parts.push(
+      `${insights.marketPriceHistorySampleCount} Google online history points, median ${entry.currency} ${insights.marketHistoryMedian}`
+    );
   }
   return parts.join("; ");
 }
@@ -635,6 +820,25 @@ function formatNoDealSummary(candidates, options = {}) {
       `Compared ${options.splitTicketsChecked} round trip${options.splitTicketsChecked === 1 ? "" : "s"} against separately priced outbound and return tickets.`
     );
   }
+  if (options.returnVerificationsAttempted) {
+    lines.push(
+      `Return-itinerary verification passed ${options.returnVerificationsPassed || 0} of ${options.returnVerificationsAttempted} alertable round trip${options.returnVerificationsAttempted === 1 ? "" : "s"}; unverified returns were suppressed.`
+    );
+  }
+  if (options.providerStats?.failed) {
+    lines.push(
+      `Provider health: ${options.providerStats.successful} Google Flights requests succeeded and ${options.providerStats.failed} failed; this was a partial check.`
+    );
+  }
+  (options.splitComparisons || []).forEach((comparison) => {
+    const difference = Math.abs(comparison.roundTripPrice - comparison.splitPrice);
+    const winner = comparison.splitPrice < comparison.roundTripPrice
+      ? `separate one-ways save ${comparison.currency} ${difference}`
+      : `the normal return is ${comparison.currency} ${difference} cheaper`;
+    lines.push(
+      `Split check ${comparison.origin} -> ${comparison.destination}: ${comparison.currency} ${comparison.splitPrice} as two one-ways vs ${comparison.currency} ${comparison.roundTripPrice} return; ${winner}.`
+    );
+  });
 
   const cheapest = [...candidates]
     .sort((a, b) => a.entry.price - b.entry.price)
@@ -643,11 +847,14 @@ function formatNoDealSummary(candidates, options = {}) {
   if (cheapest.length) {
     lines.push("", "Cheapest observed (not deal alerts):");
     cheapest.forEach(({ entry, insights, links }, index) => {
-      const dates = `${entry.departureDate}${entry.returnDate ? ` to ${entry.returnDate}` : ""}`;
+      const dates = `${formatTravelDate(entry.departureDate)}${entry.returnDate ? ` to ${formatTravelDate(entry.returnDate)}` : ""}`;
       lines.push(`${index + 1}. ${entry.origin} -> ${entry.destination} | ${dates} | ${entry.currency} ${entry.price} ${entry.tripType}`);
       if (entry.notes) lines.push(`Flight: ${entry.notes}.`);
       lines.push(`Analysis: ${formatHistoryAnalysis(entry, insights)}.`);
       lines.push(`Why no alert: ${explainNoDeal(insights, entry)}.`);
+      if (entry.verificationError) {
+        lines.push(`Return verification: ${entry.verificationError}`);
+      }
       if (links?.outboundGoogleFlights) {
         lines.push(`Outbound: ${links.outboundGoogleFlights}`);
         lines.push(`Return: ${links.inboundGoogleFlights}`);
@@ -703,10 +910,23 @@ async function sendResend(message, subject) {
 }
 
 async function deliverNotifications(message, subject) {
-  const deliveries = await Promise.allSettled([
-    sendDiscord(message),
-    sendResend(message, subject)
-  ]);
+  const deliveryTasks = [];
+  if (process.env.DISCORD_WEBHOOK_URL) deliveryTasks.push(sendDiscord(message));
+  if (
+    process.env.RESEND_API_KEY &&
+    process.env.ALERT_EMAIL_TO &&
+    process.env.ALERT_EMAIL_FROM
+  ) {
+    deliveryTasks.push(sendResend(message, subject));
+  }
+  if (!deliveryTasks.length) {
+    if (String(process.env.REQUIRE_NOTIFICATION_CHANNEL).toLowerCase() === "true") {
+      throw new Error("No notification channel is fully configured.");
+    }
+    console.warn("No local notification channel configured; message was logged only.");
+    return;
+  }
+  const deliveries = await Promise.allSettled(deliveryTasks);
   const deliveryFailures = deliveries
     .filter((delivery) => delivery.status === "rejected")
     .map((delivery) => delivery.reason?.message || String(delivery.reason));
@@ -734,7 +954,10 @@ async function main() {
     ...(config.traveler || {}),
     ...route
   }));
-  const maxSearchesPerRun = Number(process.env.MAX_SEARCHES_PER_RUN || config.maxSearchesPerRun || 80);
+  const maxSearchesPerRun = Math.min(
+    20,
+    Number(process.env.MAX_SEARCHES_PER_RUN || config.maxSearchesPerRun || 80)
+  );
   const discoveryEnabled = Boolean(config.discovery?.enabled)
     && String(process.env.DISCOVERY_ENABLED ?? "true").toLowerCase() !== "false";
   const normalizedCursor = allSearches.length ? Number(state.cursor || 0) % allSearches.length : 0;
@@ -757,6 +980,26 @@ async function main() {
   const candidates = [];
   const newEntries = [];
   let splitTicketsChecked = 0;
+  let returnVerificationsAttempted = 0;
+  let returnVerificationsPassed = 0;
+  const splitComparisons = [];
+  const providerStats = {
+    attempted: 0,
+    successful: 0,
+    failed: 0,
+    errors: []
+  };
+  const trackedSearch = async (search, options) => {
+    providerStats.attempted += 1;
+    const result = await searchSerpApi(search, options);
+    if (result.ok) {
+      providerStats.successful += 1;
+    } else {
+      providerStats.failed += 1;
+      providerStats.errors.push(result.error);
+    }
+    return result;
+  };
 
   const knownDestinations = new Set(config.routes.flatMap((route) => (
     route.destinationLocationCodes || [route.destinationLocationCode || route.destination]
@@ -774,7 +1017,7 @@ async function main() {
     console.warn(discoveryResult.error);
   } else {
     for (const search of discoveryResult.searches) {
-      const result = await searchSerpApi(search);
+      const result = await trackedSearch(search);
       if (!result.ok) {
         console.warn(result.error);
         continue;
@@ -802,8 +1045,8 @@ async function main() {
       ));
       if (!roundTripCandidate) continue;
       const [outboundSearch, inboundSearch] = buildSplitTicketSearches(roundTripSearch);
-      const outboundResult = await searchSerpApi(outboundSearch);
-      const inboundResult = await searchSerpApi(inboundSearch);
+      const outboundResult = await trackedSearch(outboundSearch);
+      const inboundResult = await trackedSearch(inboundSearch);
       splitTicketsChecked += 1;
       if (!outboundResult.ok || !inboundResult.ok) {
         if (!outboundResult.ok) console.warn(outboundResult.error);
@@ -813,6 +1056,15 @@ async function main() {
       const outboundOffer = outboundResult.offers.sort((a, b) => a.price - b.price)[0];
       const inboundOffer = inboundResult.offers.sort((a, b) => a.price - b.price)[0];
       if (!outboundOffer || !inboundOffer) continue;
+      splitComparisons.push({
+        origin: roundTripSearch.origin,
+        destination: roundTripSearch.destination,
+        departureDate: roundTripSearch.departureDate,
+        returnDate: roundTripSearch.returnDate,
+        currency: roundTripSearch.currencyCode,
+        splitPrice: outboundOffer.price + inboundOffer.price,
+        roundTripPrice: roundTripCandidate.entry.price
+      });
       const splitCandidate = summarizeSplitTicketCandidate(
         roundTripSearch,
         outboundOffer,
@@ -829,7 +1081,7 @@ async function main() {
   }
 
   for (const search of searches) {
-    const result = await searchSerpApi(search);
+    const result = await trackedSearch(search);
     if (!result.ok) {
       console.warn(result.error);
       continue;
@@ -841,6 +1093,65 @@ async function main() {
     const candidate = summarizeCandidate(search, cheapest, history);
     candidates.push(candidate);
     newEntries.push(candidate.entry);
+  }
+
+  const maxReturnVerifications = Math.max(
+    0,
+    Number(config.returnVerification?.maxPerRun || 3)
+  );
+  for (const candidate of [...candidates]) {
+    if (
+      !shouldAlert(candidate) ||
+      candidate.entry.tripType !== "round-trip" ||
+      candidate.entry.searchStrategy === "split-one-ways"
+    ) {
+      continue;
+    }
+    if (returnVerificationsAttempted >= maxReturnVerifications) {
+      candidate.insights.level = "verification-required";
+      candidate.entry.verificationError =
+        "Per-run return-verification quota was reached; no alert was sent.";
+      continue;
+    }
+
+    returnVerificationsAttempted += 1;
+    const verification = await verifyRoundTripOffer(
+      candidate.search,
+      candidate.offer,
+      trackedSearch
+    );
+    if (!verification.ok) {
+      console.warn(
+        `Suppressing ${candidate.entry.origin}-${candidate.entry.destination} alert: ${verification.error}`
+      );
+      candidate.insights.level = "verification-failed";
+      candidate.entry.verificationError = verification.error;
+      continue;
+    }
+
+    const verifiedCandidate = summarizeCandidate(
+      candidate.search,
+      verification.offer,
+      history
+    );
+    const candidateIndex = candidates.indexOf(candidate);
+    const entryIndex = newEntries.indexOf(candidate.entry);
+    candidates[candidateIndex] = verifiedCandidate;
+    if (entryIndex >= 0) newEntries[entryIndex] = verifiedCandidate.entry;
+    returnVerificationsPassed += 1;
+  }
+
+  if (providerStats.attempted > 0 && providerStats.successful === 0) {
+    const message = [
+      "Flight Tracker check incomplete",
+      "",
+      `All ${providerStats.attempted} Google Flights requests failed.`,
+      "No no-deal conclusion was recorded and the tracker will retry on its next workflow wake-up.",
+      ...providerStats.errors.slice(0, 3).map((error) => `Error: ${error}`)
+    ].join("\n");
+    console.error(message);
+    await deliverNotifications(message, "Flight Tracker check incomplete");
+    throw new Error("All Google Flights provider requests failed.");
   }
 
   const nextHistory = [...history, ...newEntries].slice(-2000);
@@ -871,6 +1182,10 @@ async function main() {
         discoveryResult,
         dealCandidates,
         splitTicketsChecked,
+        splitComparisons,
+        returnVerificationsAttempted,
+        returnVerificationsPassed,
+        providerStats,
         checkIntervalHours
       });
       console.log(summary);
@@ -887,6 +1202,10 @@ async function main() {
     exploredCandidates: discoveryResult.exploredCandidates || 0,
     flexibleDealsChecked: discoveryResult.ok ? discoveryResult.searches.length : 0,
     splitTicketsChecked,
+    splitComparisons,
+    returnVerificationsAttempted,
+    returnVerificationsPassed,
+    providerStats,
     lastCompletedAt: new Date().toISOString(),
     alerts
   });
@@ -900,8 +1219,10 @@ if (require.main === module) {
 }
 
 module.exports = {
+  alertKey,
   buildSearches,
   buildSplitTicketSearches,
+  combineRoundTripOffers,
   explainNoDeal,
   formatNoDealSummary,
   formatHistoryAnalysis,

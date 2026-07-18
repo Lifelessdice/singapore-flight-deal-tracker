@@ -5,6 +5,9 @@
   "maxSearchesPerRun": 8,
   "exactSearchHorizonDays": 90,
   "oneWaySearchShare": 0.25,
+  "returnVerification": {
+    "maxPerRun": 3
+  },
   "splitTickets": {
     "enabled": true,
     "verifyPerRun": 1,
