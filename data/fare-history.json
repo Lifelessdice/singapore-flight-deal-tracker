@@ -438,5 +438,28 @@
     "baggageProfile": "one free under-seat personal-item backpack",
     "notes": "TransNusa via Google Flights via SerpApi, 2h total, 0 stops",
     "googlePriceInsights": null
+  },
+  {
+    "routeId": "sin-student-budget-aug-dec-2026",
+    "source": "Google Flights via SerpApi",
+    "price": 259,
+    "currency": "USD",
+    "origin": "SIN",
+    "destination": "SGN",
+    "departureDate": "2026-08-07",
+    "returnDate": "2026-08-10",
+    "tripType": "round-trip",
+    "loggedAt": 1784356772834,
+    "leadTimeBucket": "15-30d",
+    "destinationName": null,
+    "averagePrice": null,
+    "discountPercentage": null,
+    "passportNationality": "Swiss",
+    "passportCountryCode": "CH",
+    "carryOnBags": 0,
+    "checkedBags": 0,
+    "baggageProfile": "one free under-seat personal-item backpack",
+    "notes": "Vietjet via Google Flights via SerpApi, 2h total, 0 stops",
+    "googlePriceInsights": null
   }
 ]
