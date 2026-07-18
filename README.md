@@ -69,6 +69,8 @@ Each alert includes:
 - outbound and return verification status for round trips
 - a traveler-value score and `BOOK`, `VERIFY`, `WATCH`, or `SKIP` action
 - practical tradeoffs such as weekday timing, stops, baggage uncertainty, or separate tickets
+- protected/self-transfer classification, policy evidence, connection time, and
+  authorization or transfer costs when applicable
 
 ## Native alert setup
 
@@ -188,6 +190,33 @@ error notification, fails the workflow, and does not advance the successful
 completion timestamp. Search state is persisted before Discord delivery, so an
 alert-channel failure cannot erase credits already spent. Manual smoke runs do
 not postpone the next scheduled cycle.
+
+## Self-transfer assessment
+
+Protected itineraries remain preferred. Google Flights results marked as separate
+tickets or requiring an airport change are no longer discarded before scoring.
+When a transfer fare is a relative deal and saves at least both the configured
+percentage and amount versus the cheapest comparable protected fare, the worker
+assesses it separately.
+
+The assessment uses nationality `Switzerland`, passport code `CHE`, and the
+configured baggage profile. `passportExpiresOn` must be configured before an
+entry-validity rule can pass automatically. Defaults require 240 minutes for a known same-airport
+transfer, 360 minutes when immigration/recheck/terminal uncertainty applies, and
+480 minutes for an airport change. Authorization, bag-recheck, ground-transfer,
+and accommodation costs are added to the effective fare when known.
+
+Policy results are `protected`, `self-transfer-acceptable`,
+`self-transfer-manual-review`, or `self-transfer-rejected`. Unknown, stale,
+unsourced, or incomplete evidence is never promoted as acceptable. Manual-review
+fares remain visible in the Discord heartbeat with a direct verification note.
+
+No visa website is scraped. Rules come from the provider interface in
+`transit-policy.js`; the current provider reads manually maintained records from
+`automation/transit-policies.json`. That production file is deliberately empty
+until a rule has been checked against an official authority or a licensed source
+such as IATA Timatic. Cache entries live in `data/transit-policy-cache.json` and
+expire according to `transitPolicyMaxAgeDays`.
 
 ### 5. Verify before booking
 

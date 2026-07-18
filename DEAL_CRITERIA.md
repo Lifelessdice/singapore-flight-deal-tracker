@@ -10,7 +10,7 @@ number.
 | --- | --- |
 | Origin | Singapore Changi (`SIN`) |
 | Passengers | 1 adult |
-| Passport | Swiss (`CH`); alerts still require current entry/transit verification |
+| Passport | Switzerland (`CHE`); alerts still require current entry/transit verification |
 | Baggage | One free under-seat personal-item backpack; no overhead-bin or checked bag |
 | Cabin | Economy |
 | Travel window | August through December 2026 |
@@ -76,9 +76,9 @@ a different itinerary than the one ultimately booked.
 
 SerpApi's first round-trip response describes the outbound selection. Before a
 round-trip price signal can alert, the worker follows its `departure_token` and
-requires a compatible return to pass the stop and duration rules without a
-self-transfer or airport change. At most one such call is reserved per cycle,
-and unverified returns are suppressed.
+requires a compatible return to pass the stop and duration rules. At most one
+such call is reserved per cycle, and unverified returns are suppressed.
+Self-transfers and airport changes continue to a separate late policy/risk check.
 
 The normal queue prioritizes routes that have been checked least recently, then
 rotates exact dates inside a 90-day booking horizon. Construction and return
@@ -147,9 +147,11 @@ unconfirmed baggage. The score cannot turn a mere target hit into a deal.
 - Cookies, incognito mode, and a universal "buy on Tuesday" rule are not treated as
   pricing strategies. There is no reliable evidence that they create repeatable
   savings.
-- Tight self-transfers are not automated. Separate tickets can fail without
-  protection when the first flight is late, and checked baggage may need to be
-  reclaimed.
+- Self-transfers remain lower priority than protected itineraries. They require a
+  configurable savings premium, sufficient connection time, fresh sourced
+  passport policy, known immigration/baggage/terminal handling, and accounted
+  extra costs. Unknown cases are manual review; paid-visa or short connections
+  are rejected.
 - Johor Bahru positioning is not automatically ranked yet. Border queues and
   ground transfers can consume a large share of a 2-to-4-day trip, so airfare
   savings would need a separate total-cost and time model.
@@ -167,10 +169,32 @@ worker reads the free SerpApi Account API before and after each run and protects
 10-credit reserve. Manual smoke tests disable Explore and constructions, default
 to one exact search, and do not change scheduled cadence.
 
-Alerts do not claim that a destination is visa-feasible. Entry and transit rules
-can change and must be verified for the Swiss passport before booking.
+An acceptable self-transfer means the maintained evidence passed the configured
+checks; it is not a guarantee of admission. Entry and transit rules can change
+and must be rechecked for the Switzerland (`CHE`) passport before booking.
 Fare-history comparisons also require the same carry-on and checked-bag counts,
 so changing baggage assumptions cannot manufacture an artificial price drop.
+
+## Transit policy and connection rules
+
+Transit checks happen only after fare, route, stop, duration, and relative-deal
+checks. Protected fares use a `protected` baseline. Self-transfers and airport
+changes use separate history strategies and cannot depress that baseline.
+
+The conservative connection defaults are 240 minutes for a confirmed
+same-airport transfer, 360 minutes when immigration, baggage recheck, or terminal
+uncertainty applies, and 480 minutes for an airport change. A transfer also needs
+at least 15% and `USD 40` savings versus a comparable protected itinerary. Extra
+authorization, baggage, ground transport, and overnight costs are included before
+the final savings and deal check.
+
+The current `manual-static` policy provider requires source metadata,
+`lastVerifiedAt`, passport validity, onward-travel requirements, visa and
+authorization fields, immigration permission, and terminal feasibility. Rules
+older than 30 days become manual review. `automation/transit-policies.example.json`
+documents the schema; its placeholder is not a production rule. The actual
+`passportExpiresOn` is intentionally unset until the traveler provides it, so
+passport-validity-dependent transfer rules remain manual review.
 
 ## Primary references
 
@@ -192,6 +216,8 @@ so changing baggage assumptions cannot manufacture an artificial price drop.
   <https://serpapi.com/google-flights-api>
 - SerpApi Account API:
   <https://serpapi.com/account-api>
+- IATA Timatic travel-documentation services:
+  <https://www.iata.org/en/services/compliance/timatic/travel-documentation/>
 - FlightClaw:
   <https://github.com/jackculpan/flightclaw>
 - Flight Finder:

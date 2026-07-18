@@ -7,6 +7,8 @@
   high traveler-value action.
 - Improve monthly coverage reporting by destination and travel month.
 - Reconcile Account API usage deltas into a bounded run-history ledger.
+- Replace the empty manual transit-policy set with narrowly scoped, sourced rules
+  or a licensed real-time document-requirements provider.
 
 ## Planned improvements
 
@@ -17,6 +19,8 @@
 - Monitor more official Singapore airline sale pages with stable extraction.
 - Add total-trip accommodation and ground-transfer estimates without allowing
   estimates to inflate statistical confidence.
+- Add a licensed Timatic/Sherpa-style provider adapter without changing the
+  conservative `unknown` and staleness behavior.
 
 ## Intentionally deferred
 

@@ -5,7 +5,8 @@
 GitHub Actions wakes daily. The worker enforces a roughly 48-hour successful-run
 interval, reads configuration/history/state, gets a free SerpApi Account API
 snapshot, builds a quota-safe work plan, runs fare lanes, scores candidates,
-persists results, and sends Discord output.
+performs late transit-policy checks only for qualifying transfer deals, persists
+results, and sends Discord output.
 
 Automated prices come from SerpApi's Google Travel Explore and Google Flights
 engines. ITA Matrix and Skiplagged are verification links only; the worker does
@@ -38,6 +39,13 @@ overnights, separate tickets, open-jaw transfers, one-way incompleteness, and
 unconfirmed baggage. This score ranks usability; it does not make a non-relative
 price into a deal.
 
+`transit-policy.js` is independent from fare scoring. Its provider interface
+returns `known` or explicit `unknown` policy evidence. The manual provider,
+cache/staleness logic, connection-time checks, extra-cost accounting, and final
+four-state transfer classification are pure and provider-agnostic. A licensed
+Timatic-style provider can replace the manual provider without changing fare
+qualification.
+
 ## Alternative constructions
 
 Nearby-airport searches send comma-separated Google Flights airport groups, such
@@ -60,10 +68,14 @@ ground cost need a dedicated model before those fares can be compared honestly.
 - SerpApi before/after quota snapshots and provider usage delta;
 - exact-search coverage attempts, successes, offers, and errors;
 - official promotion-page fingerprints;
+- policy lookup results are stored separately in
+  `data/transit-policy-cache.json`;
 - `lastRunAt` and the scheduled-only `lastCompletedAt`.
 
-Fare history is separate in `data/fare-history.json`. Coverage is based on request
-events, including successful empty responses, rather than inferred from fares.
+Fare history is separate in `data/fare-history.json`. Protected, self-transfer,
+airport-change, split, and open-jaw strategies do not share baselines. Coverage
+is based on request events, including successful empty responses, rather than
+inferred from fares.
 
 State is persisted before Discord delivery. Therefore notification failure cannot
 erase credits already spent. Alert cooldowns are persisted only after Discord
@@ -79,5 +91,8 @@ Google's first return response is normally an outbound selection; a
 `departure_token` continuation resolves a compatible return. Grouped and open-jaw
 queries may not include statistical price insights, so they build
 strategy-specific history and never borrow confidence from unrelated standard
-searches. Fare baggage text can be incomplete. Booking, entry, and transit rules
-must always be verified directly.
+searches. SerpApi does not reliably provide countries, terminal certainty,
+fallback departure availability, or document eligibility. Airport-country
+metadata and policy evidence are therefore maintained explicitly. Fare baggage
+text can be incomplete. Booking, entry, and transit rules must always be verified
+directly.

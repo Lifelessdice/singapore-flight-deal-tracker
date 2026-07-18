@@ -1,0 +1,26 @@
+{
+  "provider": "manual-static",
+  "policies": [
+    {
+      "passportCountryCode": "CHE",
+      "transitCountry": "MYS",
+      "airport": "KUL",
+      "transferType": "self-transfer",
+      "baggageProfile": "one free under-seat personal-item backpack",
+      "entryPermitted": true,
+      "visaRequired": false,
+      "paidVisaRequired": false,
+      "authorizationRequired": false,
+      "authorizationName": null,
+      "authorizationCost": 0,
+      "authorizationCostCurrency": "USD",
+      "passportValidityRule": "Replace with the currently verified official rule.",
+      "passportValidityMinimumMonthsAfterTravel": 6,
+      "onwardTravelRequirement": "Replace with the currently verified official rule.",
+      "terminalTransferFeasible": true,
+      "source": "Official authority or licensed provider name",
+      "sourceUrl": "https://example.gov/official-rule",
+      "lastVerifiedAt": "2026-07-18T00:00:00Z"
+    }
+  ]
+}

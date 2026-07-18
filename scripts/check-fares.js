@@ -13,12 +13,21 @@ const {
   summarizeCoverage,
   updateCoverage
 } = require("../tracker-product");
+const {
+  ManualTransitPolicyProvider,
+  assessTransferRisk,
+  isKnownNumber,
+  normalizePassportCountry,
+  qualifiesTransferSavings
+} = require("../transit-policy");
 
 const ROOT = path.resolve(__dirname, "..");
 const CONFIG_PATH = path.join(ROOT, "automation", "routes.json");
 const EXAMPLE_CONFIG_PATH = path.join(ROOT, "automation", "routes.example.json");
 const HISTORY_PATH = path.join(ROOT, "data", "fare-history.json");
 const STATE_PATH = path.join(ROOT, "data", "worker-state.json");
+const TRANSIT_POLICY_PATH = path.join(ROOT, "automation", "transit-policies.json");
+const TRANSIT_POLICY_CACHE_PATH = path.join(ROOT, "data", "transit-policy-cache.json");
 const SERPAPI_BASE_URL = "https://serpapi.com/search";
 
 function readJson(filePath, fallback) {
@@ -117,11 +126,12 @@ function buildSearches(route) {
       maxTotalDurationMinutes: Number(route.maxTotalDurationMinutes) || null,
       maxStops: Number.isFinite(Number(route.maxStops)) ? Number(route.maxStops) : null,
       nonStop: route.nonStop,
-      passportNationality: route.passportNationality || "",
-      passportCountryCode: route.passportCountryCode || "",
+      passportNationality: route.passportNationality || "Switzerland",
+      passportCountryCode: normalizePassportCountry(route.passportCountryCode || "CHE"),
       carryOnBags: Math.max(0, Number(route.carryOnBags) || 0),
       checkedBags: Math.max(0, Number(route.checkedBags) || 0),
       baggageProfile: route.baggageProfile || "",
+      transitAirportCountries: route.transitAirportCountries || {},
       maxResults: route.maxResultsPerSearch || 5
     }));
 }
@@ -220,8 +230,10 @@ function mapSerpApiOffer(offer, search, priceInsights) {
     airline: flight.airline || "",
     flightNumber: flight.flight_number || "",
     departureAirport: flight.departure_airport?.id || "",
+    departureTerminal: flight.departure_airport?.terminal || null,
     departureTime: flight.departure_airport?.time || "",
     arrivalAirport: flight.arrival_airport?.id || "",
+    arrivalTerminal: flight.arrival_airport?.terminal || null,
     arrivalTime: flight.arrival_airport?.time || "",
     durationMinutes: Number(flight.duration) || 0,
     overnight: Boolean(flight.overnight),
@@ -239,9 +251,38 @@ function mapSerpApiOffer(offer, search, priceInsights) {
   const hasAirportChange = flights.some((flight, index) => (
     index > 0 && flights[index - 1].arrivalAirport !== flight.departureAirport
   ));
-  const hasSelfTransfer = extensions.some((extension) => (
-    /separate tickets|self[- ]transfer/i.test(extension)
-  ));
+  const hasSelfTransfer = Boolean(
+    offer.separate_tickets ||
+    offer.booking_options?.some((option) => option.separate_tickets) ||
+    extensions.some((extension) => (
+      /separate tickets|self[- ]transfer/i.test(extension)
+    ))
+  );
+  const connections = flights.slice(0, -1).map((flight, index) => {
+    const onward = flights[index + 1];
+    const airportChange = flight.arrivalAirport !== onward.departureAirport;
+    const terminalChange = airportChange
+      ? true
+      : flight.arrivalTerminal && onward.departureTerminal
+        ? flight.arrivalTerminal !== onward.departureTerminal
+        : null;
+    return {
+      airport: flight.arrivalAirport,
+      arrivalAirport: flight.arrivalAirport,
+      departureAirport: onward.departureAirport,
+      transitCountry: search.transitAirportCountries?.[flight.arrivalAirport] || null,
+      durationMinutes: Number(layovers[index]?.durationMinutes) || null,
+      airportChange,
+      terminalChange,
+      immigrationLikely: hasSelfTransfer || airportChange ? true : null,
+      baggageRecheckLikely: hasSelfTransfer && Number(search.checkedBags || 0) > 0,
+      onwardIsLastPracticalDeparture: null,
+      overnight: Boolean(layovers[index]?.overnight)
+    };
+  });
+  const itineraryProtection = hasSelfTransfer || hasAirportChange
+    ? "self-transfer"
+    : "protected";
 
   return {
     source: "Google Flights via SerpApi",
@@ -261,6 +302,53 @@ function mapSerpApiOffer(offer, search, priceInsights) {
     ),
     hasAirportChange,
     hasSelfTransfer,
+    itineraryProtection,
+    transferAssessment: itineraryProtection === "protected"
+      ? {
+          status: "protected",
+          reasons: [],
+          warnings: [],
+          transitCountries: [],
+          transitAirports: [],
+          visaRequired: false,
+          paidVisaRequired: false,
+          authorizationRequired: false,
+          authorizationName: null,
+          authorizationCost: 0,
+          immigrationLikely: false,
+          baggageRecheckLikely: false,
+          airportChange: false,
+          terminalChange: false,
+          minimumRecommendedConnectionMinutes: null,
+          shortestConnectionMinutes: null,
+          extraEstimatedCost: 0,
+          policySource: null,
+          policyLastVerifiedAt: null
+        }
+      : {
+          status: "self-transfer-manual-review",
+          reasons: ["Transit policy has not yet been assessed."],
+          warnings: [],
+          transitCountries: [...new Set(connections.map((item) => item.transitCountry).filter(Boolean))],
+          transitAirports: [...new Set(connections.map((item) => item.airport).filter(Boolean))],
+          visaRequired: null,
+          paidVisaRequired: null,
+          authorizationRequired: null,
+          authorizationName: null,
+          authorizationCost: null,
+          immigrationLikely: true,
+          baggageRecheckLikely: Number(search.checkedBags || 0) > 0,
+          airportChange: hasAirportChange,
+          terminalChange: connections.length
+            ? connections.some((item) => item.terminalChange === true) || null
+            : null,
+          minimumRecommendedConnectionMinutes: null,
+          shortestConnectionMinutes: null,
+          extraEstimatedCost: null,
+          policySource: null,
+          policyLastVerifiedAt: null
+        },
+    connections,
     hasOvernight: flights.some((flight) => flight.overnight) ||
       layovers.some((layover) => layover.overnight),
     baggageNotes: extensions.filter((extension) => /bag|carry-on|personal item/i.test(extension)),
@@ -316,7 +404,6 @@ async function searchSerpApi(search, options = {}) {
   const offers = rawFlights
     .map((offer) => mapSerpApiOffer(offer, search, data.price_insights))
     .filter((offer) => Number.isFinite(offer.price))
-    .filter((offer) => !offer.hasSelfTransfer && !offer.hasAirportChange)
     .filter((offer) => !search.maxTotalDurationMinutes || offer.totalDurationMinutes <= search.maxTotalDurationMinutes)
     .filter((offer) => search.maxStops === null || offer.maxStops <= search.maxStops);
 
@@ -329,17 +416,13 @@ async function verifyRoundTripOffer(search, outboundOffer, searchFunction = sear
   }
   const result = await searchFunction(search, { departureToken: outboundOffer.rawId });
   if (!result.ok) return result;
-  const returnOffer = [...result.offers].sort((a, b) => a.price - b.price)[0];
+  const sortedReturns = [...result.offers].sort((a, b) => a.price - b.price);
+  const returnOffer = outboundOffer.itineraryProtection === "protected"
+    ? sortedReturns.find((offer) => offer.itineraryProtection === "protected") || sortedReturns[0]
+    : sortedReturns[0];
   if (!returnOffer) {
     return { ok: false, error: "No compatible return passed the duration and stop limits." };
   }
-  if (returnOffer.hasSelfTransfer || returnOffer.hasAirportChange) {
-    return {
-      ok: false,
-      error: "The compatible return requires a self-transfer or airport change."
-    };
-  }
-
   return {
     ok: true,
     offer: combineRoundTripOffers(outboundOffer, returnOffer)
@@ -362,6 +445,54 @@ function combineRoundTripOffers(outboundOffer, returnOffer) {
       returnOffer.maxLayoverMinutes || 0
     ),
     hasOvernight: outboundOffer.hasOvernight || returnOffer.hasOvernight,
+    hasSelfTransfer: outboundOffer.hasSelfTransfer || returnOffer.hasSelfTransfer,
+    hasAirportChange: outboundOffer.hasAirportChange || returnOffer.hasAirportChange,
+    itineraryProtection: (
+      outboundOffer.hasSelfTransfer ||
+      returnOffer.hasSelfTransfer ||
+      outboundOffer.hasAirportChange ||
+      returnOffer.hasAirportChange
+    )
+      ? "self-transfer"
+      : "protected",
+    connections: [
+      ...(outboundOffer.connections || []),
+      ...(returnOffer.connections || [])
+    ],
+    transferAssessment: (
+      outboundOffer.hasSelfTransfer ||
+      returnOffer.hasSelfTransfer ||
+      outboundOffer.hasAirportChange ||
+      returnOffer.hasAirportChange
+    )
+      ? {
+          status: "self-transfer-manual-review",
+          reasons: ["Transit policy has not yet been assessed."],
+          warnings: [],
+          transitCountries: [...new Set([
+            ...(outboundOffer.connections || []).map((item) => item.transitCountry),
+            ...(returnOffer.connections || []).map((item) => item.transitCountry)
+          ].filter(Boolean))],
+          transitAirports: [...new Set([
+            ...(outboundOffer.connections || []).map((item) => item.airport),
+            ...(returnOffer.connections || []).map((item) => item.airport)
+          ].filter(Boolean))],
+          visaRequired: null,
+          paidVisaRequired: null,
+          authorizationRequired: null,
+          authorizationName: null,
+          authorizationCost: null,
+          immigrationLikely: true,
+          baggageRecheckLikely: null,
+          airportChange: outboundOffer.hasAirportChange || returnOffer.hasAirportChange,
+          terminalChange: null,
+          minimumRecommendedConnectionMinutes: null,
+          shortestConnectionMinutes: null,
+          extraEstimatedCost: null,
+          policySource: null,
+          policyLastVerifiedAt: null
+        }
+      : outboundOffer.transferAssessment,
     baggageNotes: [...new Set([
       ...(outboundOffer.baggageNotes || []),
       ...(returnOffer.baggageNotes || [])
@@ -369,6 +500,47 @@ function combineRoundTripOffers(outboundOffer, returnOffer) {
     bookingToken: returnOffer.bookingToken,
     verifiedRoundTrip: true
   };
+}
+
+function candidateStrategy(search, offer) {
+  if (offer.hasAirportChange) return "airport-change";
+  if (offer.hasSelfTransfer) return "self-transfer";
+  return (search.searchStrategy || "standard") === "standard"
+    ? "protected"
+    : search.searchStrategy;
+}
+
+function normalizedHistoryStrategy(item) {
+  return (item?.searchStrategy || "standard") === "standard"
+    ? "protected"
+    : item.searchStrategy;
+}
+
+function selectCandidateOffers(offers, transferConfig = {}) {
+  const sorted = [...(offers || [])].sort((left, right) => left.price - right.price);
+  const protectedOffer = sorted.find((offer) => offer.itineraryProtection === "protected");
+  const transferOffers = [
+    sorted.find((offer) => offer.hasSelfTransfer && !offer.hasAirportChange),
+    sorted.find((offer) => offer.hasAirportChange)
+  ].filter(Boolean);
+  const selected = [];
+  if (protectedOffer) selected.push(protectedOffer);
+  for (const transferOffer of transferOffers) {
+    if (protectedOffer && transferOffer.price >= protectedOffer.price) continue;
+    const savings = qualifiesTransferSavings(
+      transferOffer.price,
+      protectedOffer?.price,
+      transferConfig
+    );
+    selected.push({
+      ...transferOffer,
+      protectedComparablePrice: protectedOffer?.price ?? null,
+      transferSavings: savings.amount,
+      transferSavingsPercent: savings.percent,
+      transferSavingsQualifies: savings.qualifies
+    });
+  }
+  return selected.length ? selected : sorted.slice(0, 1);
 }
 
 async function getSerpApiAccount() {
@@ -491,11 +663,14 @@ async function searchGoogleTravelExplore(discovery, state, knownDestinations) {
     tripType: "round-trip",
     maxTotalDurationMinutes: Number(discovery.maxTotalDurationMinutes) || null,
     maxStops: Number(discovery.maxStops),
-    passportNationality: discovery.passportNationality || "",
-    passportCountryCode: discovery.passportCountryCode || "",
+    passportNationality: discovery.passportNationality || "Switzerland",
+    passportCountryCode: normalizePassportCountry(
+      discovery.passportCountryCode || "CHE"
+    ),
     carryOnBags: Math.max(0, Number(discovery.carryOnBags) || 0),
     checkedBags: Math.max(0, Number(discovery.checkedBags) || 0),
     baggageProfile: discovery.baggageProfile || "",
+    transitAirportCountries: discovery.transitAirportCountries || {},
     discoveryPrice: Number(destination.flight_price)
   }));
 
@@ -527,6 +702,7 @@ function summarizeCandidate(search, offer, history) {
   const baggageDescription = offer.baggageNotes?.length
     ? `fare notes: ${offer.baggageNotes.join("; ")}`
     : "personal-item allowance not confirmed by the flight feed";
+  const historyStrategy = candidateStrategy(search, offer);
   const entry = {
     routeId: search.routeId,
     source: offer.source,
@@ -539,7 +715,7 @@ function summarizeCandidate(search, offer, history) {
     departureDate: search.departureDate,
     returnDate: search.returnDate,
     tripType: search.tripType,
-    searchStrategy: search.searchStrategy || "standard",
+    searchStrategy: historyStrategy,
     loggedAt,
     leadTimeBucket,
     tripLengthDays,
@@ -554,6 +730,16 @@ function summarizeCandidate(search, offer, history) {
     baggageProfile: search.baggageProfile || null,
     maxStops: offer.maxStops,
     returnVerified: Boolean(offer.verifiedRoundTrip),
+    itineraryProtection: offer.itineraryProtection || "protected",
+    transferAssessment: offer.transferAssessment || null,
+    baseFare: Number(offer.baseFare ?? offer.price),
+    extraEstimatedCost: offer.transferAssessment
+      ? offer.transferAssessment.extraEstimatedCost
+      : 0,
+    protectedComparablePrice: offer.protectedComparablePrice ?? null,
+    transferSavings: offer.transferSavings ?? null,
+    transferSavingsPercent: offer.transferSavingsPercent ?? null,
+    transferSavingsQualifies: offer.transferSavingsQualifies ?? null,
     notes: `${offer.airlines.join(", ") || "carrier unknown"} via ${offer.source}, ${durationDescription}, maximum ${offer.maxStops} stop${offer.maxStops === 1 ? "" : "s"} per direction, ${baggageDescription}`,
     googlePriceInsights: offer.googlePriceInsights
   };
@@ -565,7 +751,7 @@ function summarizeCandidate(search, offer, history) {
       sameRoute &&
       (item.tripType || (item.returnDate ? "round-trip" : "one-way")) === search.tripType &&
       hasSameBaggageProfile(item, search) &&
-      (item.searchStrategy || "standard") === (search.searchStrategy || "standard")
+      normalizedHistoryStrategy(item) === historyStrategy
     );
   });
   const comparisonHistory = routeHistory.filter((item) => {
@@ -609,6 +795,17 @@ function summarizeCandidate(search, offer, history) {
   };
   candidate.value = scoreTravelerValue(candidate);
   return candidate;
+}
+
+function summarizeSearchOffers(search, offers, history, transferConfig, source) {
+  return selectCandidateOffers(offers, transferConfig).map((offer) => summarizeCandidate(
+    search,
+    {
+      ...offer,
+      source: source || offer.source
+    },
+    history
+  ));
 }
 
 function summarizeSplitTicketCandidate(
@@ -742,8 +939,15 @@ function summarizeOpenJawCandidate(
   return candidate;
 }
 
-function shouldAlert(candidate) {
+function isFareDeal(candidate) {
   return ["strong-deal", "good-deal"].includes(candidate.insights.level);
+}
+
+function shouldAlert(candidate) {
+  if (!isFareDeal(candidate)) return false;
+  if ((candidate.entry.itineraryProtection || "protected") === "protected") return true;
+  return candidate.entry.transferSavingsQualifies === true &&
+    candidate.entry.transferAssessment?.status === "self-transfer-acceptable";
 }
 
 function alertKey(candidate) {
@@ -813,13 +1017,35 @@ function formatAlert(candidates) {
         `Split-ticket advantage: ${entry.currency} ${entry.strategySavings} (${entry.strategySavingsPercent}%) below the same-run round-trip fare of ${entry.currency} ${entry.roundTripComparisonPrice}. These are independent outbound and return bookings.`
       );
     }
+    const transfer = entry.transferAssessment;
+    if (transfer?.status === "self-transfer-acceptable") {
+      lines.push(
+        `Transfer status: ACCEPTABLE SELF-TRANSFER | saves ${entry.currency} ${entry.transferSavings} (${entry.transferSavingsPercent}%) versus the comparable protected fare.`
+      );
+      lines.push(
+        `Connection evidence: ${transfer.shortestConnectionMinutes} minutes minimum observed; ${transfer.minimumRecommendedConnectionMinutes} recommended; transit ${transfer.transitAirports.join(", ") || "airport unknown"}; immigration ${transfer.immigrationLikely ? "likely" : "not expected"}; baggage recheck ${transfer.baggageRecheckLikely ? "likely" : "not expected"}.`
+      );
+      if (transfer.authorizationRequired) {
+        lines.push(
+          `Required authorization: ${transfer.authorizationName}; cost ${entry.currency} ${transfer.authorizationCost}.`
+        );
+      }
+      if (transfer.warnings.length) {
+        lines.push(`Self-transfer warnings: ${transfer.warnings.join(" ")}`);
+      }
+      lines.push(
+        `Policy evidence: ${transfer.policySource || "manual policy"}; verified ${transfer.policyLastVerifiedAt || "date unavailable"}. Recheck before purchase.`
+      );
+    } else if (transfer?.status === "protected") {
+      lines.push("Transfer status: protected itinerary.");
+    }
     if (
       entry.tripType === "round-trip" &&
       !["split-one-ways", "open-jaw"].includes(entry.searchStrategy)
     ) {
       lines.push(
         entry.returnVerified
-          ? "Itinerary check: both outbound and return passed the configured duration, stop, airport-change, and self-transfer checks."
+          ? "Itinerary check: both outbound and return passed the configured duration and stop checks; transfer risk was assessed separately."
           : "Itinerary check: return could not be verified; this candidate should not have been alerted."
       );
     }
@@ -846,6 +1072,18 @@ function formatAlert(candidates) {
 }
 
 function explainNoDeal(insights, entry = {}) {
+  if (entry.transferAssessment?.status === "self-transfer-manual-review") {
+    return `self-transfer needs manual review: ${entry.transferAssessment.reasons.join(" ")}`;
+  }
+  if (entry.transferAssessment?.status === "self-transfer-rejected") {
+    return `self-transfer rejected: ${entry.transferAssessment.reasons.join(" ")}`;
+  }
+  if (
+    entry.itineraryProtection === "self-transfer" &&
+    entry.transferSavingsQualifies === false
+  ) {
+    return `self-transfer savings do not meet both configured risk premiums`;
+  }
   if (entry.verificationError) {
     return `the price signal qualified, but the return itinerary was not safe to alert: ${entry.verificationError}`;
   }
@@ -965,6 +1203,34 @@ function formatNoDealSummary(candidates, options = {}) {
       `Promotion watch: checked ${options.promotionResult.checked} official airline page${options.promotionResult.checked === 1 ? "" : "s"}; ${options.promotionResult.changed.length} changed since the previous check.`
     );
   }
+  const manualReviewCandidates = candidates.filter((candidate) => (
+    isFareDeal(candidate) &&
+    candidate.entry.transferAssessment?.status === "self-transfer-manual-review"
+  ));
+  const rejectedTransferCandidates = candidates.filter((candidate) => (
+    candidate.entry.transferAssessment?.status === "self-transfer-rejected"
+  ));
+  if (manualReviewCandidates.length) {
+    lines.push("", "Self-transfers requiring manual review:");
+    manualReviewCandidates.slice(0, 3).forEach((candidate, index) => {
+      const entry = candidate.entry;
+      lines.push(
+        `${index + 1}. ${entry.origin} -> ${entry.destination} | ${entry.currency} ${entry.price} | ${entry.departureDate}${entry.returnDate ? ` to ${entry.returnDate}` : ""}`
+      );
+      lines.push(`Unresolved: ${entry.transferAssessment.reasons.join(" ")}`);
+      lines.push(
+        "Verify entry/transit permission, passport validity, onward proof, baggage recheck, terminals, fallback flights, and all transfer costs before booking."
+      );
+      if (candidate.links?.googleFlights) {
+        lines.push(`Open flight search: ${candidate.links.googleFlights}`);
+      }
+    });
+  }
+  if (rejectedTransferCandidates.length) {
+    lines.push(
+      `Rejected self-transfers: ${rejectedTransferCandidates.length}; reasons were recorded in fare history.`
+    );
+  }
   (options.splitComparisons || []).forEach((comparison) => {
     const difference = Math.abs(comparison.roundTripPrice - comparison.splitPrice);
     const winner = comparison.splitPrice < comparison.roundTripPrice
@@ -1071,6 +1337,19 @@ async function main() {
   const config = readJson(configPath, { routes: [] });
   const history = readJson(HISTORY_PATH, []);
   const state = readJson(STATE_PATH, { cursor: 0, alerts: {} });
+  const transitPolicyConfig = readJson(TRANSIT_POLICY_PATH, { policies: [] });
+  let transitPolicyCache = readJson(TRANSIT_POLICY_CACHE_PATH, {});
+  const transitPolicyProvider = new ManualTransitPolicyProvider(
+    transitPolicyConfig.policies || []
+  );
+  const transferConfig = config.transitAssessment || {};
+  const traveler = {
+    ...(config.traveler || {}),
+    passportNationality: config.traveler?.passportNationality || "Switzerland",
+    passportCountryCode: normalizePassportCountry(
+      config.traveler?.passportCountryCode || "CHE"
+    )
+  };
   const runId = new Date().toISOString();
   const checkIntervalHours = Number(config.checkIntervalHours || 48);
   const minimumElapsedMs = Math.max(1, checkIntervalHours - 1) * 60 * 60 * 1000;
@@ -1083,7 +1362,8 @@ async function main() {
   }
 
   const allSearches = config.routes.flatMap((route) => buildSearches({
-    ...(config.traveler || {}),
+    ...traveler,
+    transitAirportCountries: transferConfig.airportCountries || {},
     ...route
   }));
   const maxSearchesPerRun = Math.min(
@@ -1205,7 +1485,8 @@ async function main() {
     try {
       discoveryResult = await searchGoogleTravelExplore(
         {
-          ...(config.traveler || {}),
+          ...traveler,
+          transitAirportCountries: transferConfig.airportCountries || {},
           ...config.discovery,
           enabled: discoveryEnabled
         },
@@ -1231,12 +1512,15 @@ async function main() {
         console.warn(result.error);
         continue;
       }
-      const cheapest = result.offers.sort((a, b) => a.price - b.price)[0];
-      if (!cheapest) continue;
-      cheapest.source = "Google Travel Explore, verified via Google Flights";
-      const candidate = summarizeCandidate(search, cheapest, history);
-      candidates.push(candidate);
-      newEntries.push(candidate.entry);
+      const searchCandidates = summarizeSearchOffers(
+        search,
+        result.offers,
+        history,
+        transferConfig,
+        "Google Travel Explore, verified via Google Flights"
+      );
+      candidates.push(...searchCandidates);
+      newEntries.push(...searchCandidates.map((candidate) => candidate.entry));
     }
   }
 
@@ -1250,7 +1534,8 @@ async function main() {
         candidate.entry.origin === roundTripSearch.origin &&
         candidate.entry.destination === roundTripSearch.destination &&
         candidate.entry.departureDate === roundTripSearch.departureDate &&
-        candidate.entry.returnDate === roundTripSearch.returnDate
+        candidate.entry.returnDate === roundTripSearch.returnDate &&
+        candidate.entry.itineraryProtection === "protected"
       ));
       if (!roundTripCandidate) continue;
       const [outboundSearch, inboundSearch] = buildSplitTicketSearches(roundTripSearch);
@@ -1262,8 +1547,12 @@ async function main() {
         if (!inboundResult.ok) console.warn(inboundResult.error);
         continue;
       }
-      const outboundOffer = outboundResult.offers.sort((a, b) => a.price - b.price)[0];
-      const inboundOffer = inboundResult.offers.sort((a, b) => a.price - b.price)[0];
+      const outboundOffer = [...outboundResult.offers]
+        .sort((a, b) => a.price - b.price)
+        .find((offer) => offer.itineraryProtection === "protected");
+      const inboundOffer = [...inboundResult.offers]
+        .sort((a, b) => a.price - b.price)
+        .find((offer) => offer.itineraryProtection === "protected");
       if (!outboundOffer || !inboundOffer) continue;
       splitComparisons.push({
         origin: roundTripSearch.origin,
@@ -1296,12 +1585,14 @@ async function main() {
       continue;
     }
 
-    const cheapest = result.offers.sort((a, b) => a.price - b.price)[0];
-    if (!cheapest) continue;
-
-    const candidate = summarizeCandidate(search, cheapest, history);
-    candidates.push(candidate);
-    newEntries.push(candidate.entry);
+    const searchCandidates = summarizeSearchOffers(
+      search,
+      result.offers,
+      history,
+      transferConfig
+    );
+    candidates.push(...searchCandidates);
+    newEntries.push(...searchCandidates.map((candidate) => candidate.entry));
   }
 
   const referenceSearch = searches.find((search) => search.tripType === "round-trip") ||
@@ -1311,7 +1602,7 @@ async function main() {
     ));
   const constructionLane = buildConstructionLane(
     {
-      ...(config.traveler || {}),
+      ...traveler,
       ...(config.constructions || {}),
       enabled: constructionsEnabled
     },
@@ -1322,13 +1613,15 @@ async function main() {
     const constructionSearch = constructionLane.searches[0];
     const result = await trackedSearch(constructionSearch, undefined, "construction");
     if (result.ok) {
-      const cheapest = [...result.offers].sort((a, b) => a.price - b.price)[0];
-      if (cheapest) {
-        cheapest.source = "Nearby-airport group via Google Flights";
-        const candidate = summarizeCandidate(constructionSearch, cheapest, history);
-        candidates.push(candidate);
-        newEntries.push(candidate.entry);
-      }
+      const searchCandidates = summarizeSearchOffers(
+        constructionSearch,
+        result.offers,
+        history,
+        transferConfig,
+        "Nearby-airport group via Google Flights"
+      );
+      candidates.push(...searchCandidates);
+      newEntries.push(...searchCandidates.map((candidate) => candidate.entry));
     }
     constructionSummary = `checked ${constructionLane.definition.label} as a grouped nearby-airport search`;
   } else if (constructionLane.definition?.type === "open-jaw") {
@@ -1336,8 +1629,12 @@ async function main() {
     const outboundResult = await trackedSearch(outboundSearch, undefined, "construction");
     const inboundResult = await trackedSearch(inboundSearch, undefined, "construction");
     if (outboundResult.ok && inboundResult.ok) {
-      const outboundOffer = [...outboundResult.offers].sort((a, b) => a.price - b.price)[0];
-      const inboundOffer = [...inboundResult.offers].sort((a, b) => a.price - b.price)[0];
+      const outboundOffer = [...outboundResult.offers]
+        .sort((a, b) => a.price - b.price)
+        .find((offer) => offer.itineraryProtection === "protected");
+      const inboundOffer = [...inboundResult.offers]
+        .sort((a, b) => a.price - b.price)
+        .find((offer) => offer.itineraryProtection === "protected");
       if (outboundOffer && inboundOffer) {
         const candidate = summarizeOpenJawCandidate(
           referenceSearch,
@@ -1355,7 +1652,7 @@ async function main() {
 
   for (const candidate of [...candidates]) {
     if (
-      !shouldAlert(candidate) ||
+      !isFareDeal(candidate) ||
       candidate.entry.tripType !== "round-trip" ||
       ["split-one-ways", "open-jaw"].includes(candidate.entry.searchStrategy)
     ) {
@@ -1395,6 +1692,69 @@ async function main() {
     returnVerificationsPassed += 1;
   }
 
+  for (const candidate of [...candidates]) {
+    if (
+      !isFareDeal(candidate) ||
+      (candidate.entry.itineraryProtection || "protected") === "protected"
+    ) {
+      continue;
+    }
+
+    const result = await assessTransferRisk({
+      offer: candidate.offer,
+      traveler: {
+        ...traveler,
+        passportNationality: candidate.search.passportNationality || traveler.passportNationality,
+        passportCountryCode: normalizePassportCountry(
+          candidate.search.passportCountryCode || traveler.passportCountryCode
+        ),
+        carryOnBags: Number(candidate.search.carryOnBags ?? traveler.carryOnBags ?? 0),
+        checkedBags: Number(candidate.search.checkedBags ?? traveler.checkedBags ?? 0),
+        baggageProfile: candidate.search.baggageProfile || traveler.baggageProfile
+      },
+      travelEndDate: candidate.search.returnDate || candidate.search.departureDate,
+      currency: candidate.entry.currency,
+      config: transferConfig,
+      provider: transitPolicyProvider,
+      cache: transitPolicyCache
+    });
+    const assessment = result.assessment;
+    transitPolicyCache = result.cache;
+
+    const extraCost = assessment.extraEstimatedCost;
+    const effectivePrice = isKnownNumber(extraCost)
+      ? candidate.offer.price + Number(extraCost)
+      : candidate.offer.price;
+    const effectiveSavings = qualifiesTransferSavings(
+      effectivePrice,
+      candidate.offer.protectedComparablePrice,
+      transferConfig
+    );
+    const assessedOffer = {
+      ...candidate.offer,
+      baseFare: candidate.offer.price,
+      price: effectivePrice,
+      transferSavings: effectiveSavings.amount,
+      transferSavingsPercent: effectiveSavings.percent,
+      transferSavingsQualifies: effectiveSavings.qualifies,
+      transferAssessment: assessment,
+      itineraryProtection: "self-transfer"
+    };
+    const assessedCandidate = summarizeCandidate(
+      candidate.search,
+      assessedOffer,
+      history
+    );
+    if (assessment.status === "self-transfer-rejected") {
+      assessedCandidate.entry.transferRejectionReason =
+        assessment.reasons.join(" ");
+    }
+    const candidateIndex = candidates.indexOf(candidate);
+    const entryIndex = newEntries.indexOf(candidate.entry);
+    candidates[candidateIndex] = assessedCandidate;
+    if (entryIndex >= 0) newEntries[entryIndex] = assessedCandidate.entry;
+  }
+
   const accountAfterResult = await getSerpApiAccount();
   if (!accountAfterResult.ok) console.warn(accountAfterResult.error);
   quota.after = accountAfterResult.ok
@@ -1415,6 +1775,7 @@ async function main() {
   });
   const nextHistory = [...history, ...newEntries].slice(-2000);
   writeJson(HISTORY_PATH, nextHistory);
+  writeJson(TRANSIT_POLICY_CACHE_PATH, transitPolicyCache);
   const cooldownHours = Number(config.alertCooldownHours || 168);
   const alerts = state.alerts || {};
   const dealCandidates = candidates.filter(shouldAlert);
@@ -1523,10 +1884,16 @@ module.exports = {
   buildSplitTicketSearches,
   combineRoundTripOffers,
   explainNoDeal,
+  formatAlert,
   formatNoDealSummary,
   formatHistoryAnalysis,
+  isFareDeal,
   main,
+  mapSerpApiOffer,
   selectSearches,
+  shouldAlert,
+  summarizeCandidate,
   summarizeOpenJawCandidate,
-  summarizeSplitTicketCandidate
+  summarizeSplitTicketCandidate,
+  verifyRoundTripOffer
 };

@@ -3,9 +3,14 @@ const {
   alertKey,
   buildSplitTicketSearches,
   combineRoundTripOffers,
+  formatAlert,
   formatNoDealSummary,
+  mapSerpApiOffer,
   selectSearches,
-  summarizeSplitTicketCandidate
+  shouldAlert,
+  summarizeCandidate,
+  summarizeSplitTicketCandidate,
+  verifyRoundTripOffer
 } = require("../scripts/check-fares");
 
 const candidate = {
@@ -184,6 +189,224 @@ assert.equal(combinedRoundTrip.outboundDurationMinutes, 90);
 assert.equal(combinedRoundTrip.returnDurationMinutes, 100);
 assert.deepEqual(combinedRoundTrip.airlines, ["Scoot", "AirAsia"]);
 
+const mappedTransfer = mapSerpApiOffer(
+  {
+    price: 100,
+    total_duration: 500,
+    extensions: ["Separate tickets booked together"],
+    flights: [
+      {
+        airline: "Airline A",
+        departure_airport: { id: "SIN", time: "2026-08-07 08:00" },
+        arrival_airport: { id: "BKK", time: "2026-08-07 10:00", terminal: "1" },
+        duration: 120
+      },
+      {
+        airline: "Airline B",
+        departure_airport: { id: "DMK", time: "2026-08-07 19:00", terminal: "2" },
+        arrival_airport: { id: "HKT", time: "2026-08-07 20:30" },
+        duration: 90
+      }
+    ],
+    layovers: [{ id: "BKK", duration: 540 }]
+  },
+  {
+    ...baseSearch,
+    destination: "HKT",
+    transitAirportCountries: { BKK: "THA" }
+  },
+  null
+);
+assert.equal(mappedTransfer.hasSelfTransfer, true);
+assert.equal(mappedTransfer.hasAirportChange, true);
+assert.equal(mappedTransfer.itineraryProtection, "self-transfer");
+assert.equal(mappedTransfer.connections[0].transitCountry, "THA");
+assert.equal(mappedTransfer.connections[0].durationMinutes, 540);
+
+const verifiedSelfTransferPromise = verifyRoundTripOffer(
+  baseSearch,
+  {
+    ...mappedTransfer,
+    rawId: "departure-token",
+    price: 100
+  },
+  async () => ({
+    ok: true,
+    offers: [{
+      ...mappedTransfer,
+      price: 140,
+      flights: [],
+      layovers: [],
+      connections: [{
+        ...mappedTransfer.connections[0],
+        airport: "KUL",
+        transitCountry: "MYS"
+      }],
+      bookingToken: "booking-token"
+    }]
+  })
+).then((verifiedSelfTransfer) => {
+  assert.equal(verifiedSelfTransfer.ok, true);
+  assert.equal(verifiedSelfTransfer.offer.itineraryProtection, "self-transfer");
+  assert.equal(verifiedSelfTransfer.offer.connections.length, 2);
+});
+
+const protectedHistory = [15, 16, 17].map((day, index) => ({
+  routeId: "student",
+  origin: "SIN",
+  destination: "KUL",
+  departureDate: "2026-08-07",
+  returnDate: "2026-08-10",
+  tripType: "round-trip",
+  searchStrategy: "protected",
+  price: 150 + index,
+  loggedAt: Date.parse(`2026-07-${day}T00:00:00Z`),
+  leadTimeBucket: "15-30d",
+  tripLengthDays: 3,
+  weekendDeparture: true,
+  carryOnBags: 0,
+  checkedBags: 0
+}));
+const selfHistoryCandidate = summarizeCandidate(
+  baseSearch,
+  {
+    ...mappedTransfer,
+    price: 100,
+    currency: "USD",
+    resolvedOrigin: "SIN",
+    resolvedDestination: "KUL",
+    airlines: ["Airline A"],
+    totalDurationMinutes: 400,
+    maxStops: 1,
+    baggageNotes: []
+  },
+  protectedHistory
+);
+assert.equal(selfHistoryCandidate.entry.searchStrategy, "airport-change");
+assert.equal(selfHistoryCandidate.insights.baselineSampleCount, 0);
+const protectedHistoryCandidate = summarizeCandidate(
+  baseSearch,
+  {
+    ...selfHistoryCandidate.offer,
+    hasSelfTransfer: false,
+    hasAirportChange: false,
+    itineraryProtection: "protected",
+    transferAssessment: { status: "protected", extraEstimatedCost: 0 },
+    price: 140
+  },
+  protectedHistory
+);
+assert.equal(protectedHistoryCandidate.entry.searchStrategy, "protected");
+assert.equal(protectedHistoryCandidate.insights.baselineSampleCount, 3);
+
+const manualCandidate = {
+  ...candidate,
+  entry: {
+    ...candidate.entry,
+    itineraryProtection: "self-transfer",
+    searchStrategy: "self-transfer",
+    transferAssessment: {
+      status: "self-transfer-manual-review",
+      reasons: ["Transit policy is unknown."],
+      warnings: []
+    }
+  },
+  insights: {
+    ...candidate.insights,
+    level: "good-deal"
+  }
+};
+const manualHeartbeat = formatNoDealSummary([manualCandidate], {
+  dealCandidates: []
+});
+assert.match(manualHeartbeat, /Self-transfers requiring manual review/);
+assert.match(manualHeartbeat, /Transit policy is unknown/);
+assert.equal(shouldAlert(manualCandidate), false);
+
+const acceptableTransferCandidate = {
+  ...manualCandidate,
+  entry: {
+    ...manualCandidate.entry,
+    transferSavingsQualifies: true,
+    transferAssessment: {
+      status: "self-transfer-acceptable",
+      reasons: [],
+      warnings: ["Separate tickets are unprotected."]
+    }
+  }
+};
+assert.equal(shouldAlert(acceptableTransferCandidate), true);
+assert.equal(
+  shouldAlert({
+    ...acceptableTransferCandidate,
+    entry: {
+      ...acceptableTransferCandidate.entry,
+      transferSavingsQualifies: false
+    }
+  }),
+  false
+);
+const acceptableAlert = formatAlert([{
+  ...acceptableTransferCandidate,
+  insights: {
+    ...acceptableTransferCandidate.insights,
+    latestVsMedianPct: -20,
+    latestVsAveragePct: -18,
+    latestVsMarketPct: -15,
+    baselineScope: "matching strategy",
+    baselineSampleCount: 3,
+    dealSignals: ["local-history"],
+    savingsVsMedian: 20,
+    savingsVsAverage: 18
+  },
+  value: {
+    action: "VERIFY",
+    score: 70,
+    reasons: ["strong relative price anomaly"],
+    risks: ["separate tickets"]
+  },
+  entry: {
+    ...acceptableTransferCandidate.entry,
+    baseFare: 80,
+    transferSavings: 50,
+    transferSavingsPercent: 38,
+    returnVerified: true,
+    passportNationality: "Switzerland",
+    baggageProfile: "personal item",
+    checkedBags: 0,
+    transferAssessment: {
+      status: "self-transfer-acceptable",
+      reasons: [],
+      warnings: ["Separate tickets are unprotected."],
+      shortestConnectionMinutes: 400,
+      minimumRecommendedConnectionMinutes: 360,
+      transitAirports: ["KUL"],
+      immigrationLikely: true,
+      baggageRecheckLikely: false,
+      authorizationRequired: false,
+      policySource: "https://authority.test/rule",
+      policyLastVerifiedAt: "2026-07-10T00:00:00Z"
+    }
+  }
+}]);
+assert.match(acceptableAlert, /ACCEPTABLE SELF-TRANSFER/);
+assert.match(acceptableAlert, /Separate tickets are unprotected/);
+
+const rejectedCandidate = {
+  ...manualCandidate,
+  entry: {
+    ...manualCandidate.entry,
+    transferAssessment: {
+      status: "self-transfer-rejected",
+      reasons: ["A paid visa is required."],
+      warnings: []
+    },
+    transferRejectionReason: "A paid visa is required."
+  }
+};
+const rejectedHeartbeat = formatNoDealSummary([rejectedCandidate], {});
+assert.match(rejectedHeartbeat, /Rejected self-transfers: 1/);
+
 assert.notEqual(
   alertKey({ entry: { ...candidate.entry, departureDate: "2026-08-01" } }),
   alertKey({ entry: { ...candidate.entry, departureDate: "2026-08-08" } })
@@ -220,4 +443,9 @@ assert.equal(selectedSearches.filter((search) => search.tripType === "round-trip
 assert.equal(selectedSearches.filter((search) => search.tripType === "one-way").length, 1);
 assert.equal(selectedSearches.some((search) => search.destination === "HKG"), false);
 
-console.log("fare notification tests passed");
+verifiedSelfTransferPromise
+  .then(() => console.log("fare notification tests passed"))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

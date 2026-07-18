@@ -10,6 +10,7 @@ DISCORD_WEBHOOK_URL
 ```
 
 Email delivery is disabled. Resend and Gmail credentials are not used.
+No transit-policy API key is currently required.
 
 For local live checks, create `.env` with the same names. Never commit `.env`.
 
@@ -64,6 +65,9 @@ and retain the old `lastCompletedAt`.
 - Some requests fail: complete the run and disclose partial provider health.
 - Discord fails: searched state remains persisted; the action fails.
 - Promotion page fails: fare checks continue and the heartbeat records the error.
+- Unknown/stale transit policy: the fare remains in the manual-review heartbeat.
+- Paid visa or insufficient transfer time: the transfer is rejected and its
+  reason is stored in fare history.
 - Concurrent state push: the workflow rebases and retries up to three times.
 
 The state commit step uses `if: always()` so provider or Discord failures still
@@ -80,3 +84,20 @@ preserve billable work.
    `lastCompletedAt`.
 
 Never use a full scheduled-size run merely to test formatting.
+
+## Maintaining transit policies
+
+1. Use an official immigration authority or licensed travel-document provider.
+2. Copy the schema from `automation/transit-policies.example.json`.
+3. Use ISO `CHE` for the passport and a three-letter transit-country code.
+4. Set `traveler.passportExpiresOn` only from the traveler’s actual passport.
+5. Record the exact airport and transfer type; avoid broad country wildcards.
+6. Fill every legal/practical field and source URL.
+7. Store authorization and transfer costs in the route currency; otherwise the
+   result remains manual review until a verified conversion exists.
+8. Set `lastVerifiedAt` to the actual review time.
+9. Run `npm run check`.
+
+Do not copy the example placeholder into production unchanged. The production
+policy file is empty by default, so transfer deals remain manual review until a
+maintained rule exists.

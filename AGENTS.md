@@ -9,18 +9,24 @@ Read these files before changing the worker:
 
 ## Mission
 
-Find unusually cheap, practical short trips for one Swiss-passport student based
+Find unusually cheap, practical short trips for one Swiss passport holder based
 in Singapore through December 2026. Cheap means cheap relative to a matched
 market baseline, not merely below a fixed dollar target.
 
 ## Non-negotiable rules
 
-- One adult, economy, origin `SIN`, August-December 2026.
+- One adult, Switzerland nationality, `CHE` passport code, economy, origin
+  `SIN`, August-December 2026.
 - Assume one free under-seat backpack, zero paid carry-on bags, and zero checked
   bags. Never state that the personal item is included unless the fare feed says so.
 - Search 2-to-4-day trips, including weekdays and one ways.
-- Reject more than one stop, more than 15 hours per direction, self-transfers,
-  and airport changes.
+- Reject more than one stop or more than 15 hours per direction. Assess
+  self-transfers and airport changes late through `transit-policy.js`.
+- Never mark a transfer acceptable from nationality alone. Policy evidence must
+  be complete, sourced, fresh, and specific to the airport, transfer type, and
+  configured baggage profile.
+- Paid visas and insufficient connections are rejected. Unknown/stale policies,
+  unknown costs, or incomplete practical evidence require manual review.
 - `USD 75` one way and `USD 160` return are context only. They cannot independently
   trigger a deal alert.
 - Confidence comes only from Google's external typical-price range and online
@@ -41,6 +47,10 @@ market baseline, not merely below a fixed dollar target.
 - `fare-insights.js`: relative-fare statistics and confidence.
 - `tracker-product.js`: traveler-value scoring, construction rotation, quota,
   coverage, and promotion helpers.
+- `transit-policy.js`: provider interface, cache keys, policy staleness, transfer
+  timing, cost, and legal/practical classification.
+- `automation/transit-policies.json`: manually maintained, sourced policy rules.
+- `data/transit-policy-cache.json`: non-secret policy lookup cache.
 - `automation/routes.json`: production traveler and search configuration.
 - `data/fare-history.json`: observed candidate history.
 - `data/worker-state.json`: cursors, cooldowns, quota, coverage, and promotions.

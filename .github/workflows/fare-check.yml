@@ -55,10 +55,10 @@ jobs:
       - name: Commit fare history
         if: always()
         run: |
-          if [ -n "$(git status --porcelain data/fare-history.json data/worker-state.json)" ]; then
+          if [ -n "$(git status --porcelain data/fare-history.json data/worker-state.json data/transit-policy-cache.json)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/fare-history.json data/worker-state.json
+            git add data/fare-history.json data/worker-state.json data/transit-policy-cache.json
             git commit -m "Update fare tracking state"
             for attempt in 1 2 3; do
               if git pull --rebase origin main && git push; then exit 0; fi

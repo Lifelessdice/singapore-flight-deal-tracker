@@ -21,11 +21,35 @@
     "strongSavingsPercent": 20
   },
   "traveler": {
-    "passportNationality": "Swiss",
-    "passportCountryCode": "CH",
+    "passportNationality": "Switzerland",
+    "passportCountryCode": "CHE",
+    "passportExpiresOn": null,
     "carryOnBags": 0,
     "checkedBags": 0,
     "baggageProfile": "one free under-seat personal-item backpack"
+  },
+  "transitAssessment": {
+    "allowSelfTransfers": true,
+    "allowAirportChanges": true,
+    "selfTransferMinimumSavingPercent": 15,
+    "selfTransferMinimumSavingAmount": 40,
+    "sameAirportSelfTransferMinMinutes": 240,
+    "immigrationOrRecheckMinMinutes": 360,
+    "airportChangeMinMinutes": 480,
+    "transitPolicyMaxAgeDays": 30,
+    "requireKnownOnwardFallback": true,
+    "carryOnBagFee": null,
+    "checkedBagFee": null,
+    "checkedBagRecheckCost": null,
+    "overnightAccommodationCost": null,
+    "airportTransfers": {},
+    "airportCountries": {
+      "SIN": "SGP",
+      "KUL": "MYS",
+      "PEN": "MYS",
+      "BKK": "THA",
+      "DMK": "THA"
+    }
   },
   "discovery": {
     "enabled": true,
