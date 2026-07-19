@@ -7,6 +7,12 @@ Read these files before changing the worker:
 3. `docs/OPERATIONS.md` for secrets, scheduling, QA, and failures.
 4. `docs/ROADMAP.md` for known gaps and intentionally deferred work.
 
+Keep `README.md` written for a human repository visitor. Do not place agent
+handoff notes, detailed implementation inventories, QA protocols, or research
+logs there. Put coding constraints in this file, product rules in
+`DEAL_CRITERIA.md`, architecture in `docs/ARCHITECTURE.md`, operations in
+`docs/OPERATIONS.md`, and planned work in `docs/ROADMAP.md`.
+
 ## Mission
 
 Find unusually cheap, practical short trips for one Swiss passport holder based
@@ -17,6 +23,9 @@ market baseline, not merely below a fixed dollar target.
 
 - One adult, Switzerland nationality, `CHE` passport code, economy, origin
   `SIN`, August-December 2026.
+- Treat passport validity as sufficient for the configured travel period without
+  requesting or storing the exact expiry date. Continue checking every other
+  entry, visa, authorization, and transit requirement.
 - Assume one free under-seat backpack, zero paid carry-on bags, and zero checked
   bags. Never state that the personal item is included unless the fare feed says so.
 - Search 2-to-4-day trips, including weekdays and one ways.
