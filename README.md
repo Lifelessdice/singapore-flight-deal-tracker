@@ -61,9 +61,10 @@ self-transfers requiring manual review.
 
 1. GitHub Actions wakes daily and starts a fare cycle when about 48 hours have
    passed since the previous successful scheduled check.
-2. Google Travel Explore looks for inexpensive short-trip destinations.
-3. Promising results and configured route/date combinations are checked through
-   Google Flights using SerpApi.
+2. Two date-first Google Travel Explore lanes use one configured return pair and
+   one one-way date to scan many destinations per request.
+3. Explore results are ranked by relative price evidence, trip practicality, and
+   traveler value; the strongest options are checked through Google Flights.
 4. The worker applies price, stop, duration, return-safety, and transfer-risk
    checks before sending an alert.
 5. Fare history and worker state are committed back to the repository, allowing
@@ -170,9 +171,11 @@ are a backup rather than the primary worker.
 
 ## Self-transfers and hidden-city fares
 
-Protected itineraries are preferred. A self-transfer is considered only after it
-passes the normal deal tests and saves at least both 15% and `USD 40` versus a
-comparable protected itinerary.
+Protected itineraries are preferred. A self-transfer must pass the same relative
+deal tests as any other fare, followed by stricter legal and practical checks.
+There is no additional percentage or dollar saving requirement. Any same-run
+protected comparison is included as context rather than used as an eligibility
+gate.
 
 Unknown visa rules, uncertain costs, or incomplete airport evidence are shown for
 manual review instead of being promoted as safe. Paid visas and connections below
@@ -193,7 +196,8 @@ practice may conflict with airline terms.
 - Entry and transit rules can change and always require final verification.
 - Local statistical confidence improves only after enough comparable observation
   days have accumulated.
-- Open-jaw prices currently exclude transport between the destination cities.
+- Open-jaw transport is included only when a cost is configured; unknown ground
+  cost suppresses the candidate from normal deal alerts.
 
 ## Documentation
 

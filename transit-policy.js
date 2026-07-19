@@ -3,8 +3,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TRANSFER_CONFIG = {
   allowSelfTransfers: false,
   allowAirportChanges: false,
-  selfTransferMinimumSavingPercent: 15,
-  selfTransferMinimumSavingAmount: 40,
   sameAirportSelfTransferMinMinutes: 240,
   immigrationOrRecheckMinMinutes: 360,
   airportChangeMinMinutes: 480,
@@ -158,17 +156,6 @@ function transferSavings(basePrice, protectedPrice) {
   return {
     amount,
     percent: Math.round((amount / protected) * 100)
-  };
-}
-
-function qualifiesTransferSavings(basePrice, protectedPrice, config = {}) {
-  const settings = { ...DEFAULT_TRANSFER_CONFIG, ...config };
-  const savings = transferSavings(basePrice, protectedPrice);
-  return {
-    ...savings,
-    qualifies: savings.amount !== null &&
-      savings.amount >= Number(settings.selfTransferMinimumSavingAmount) &&
-      savings.percent >= Number(settings.selfTransferMinimumSavingPercent)
   };
 }
 
@@ -565,6 +552,5 @@ module.exports = {
   lookupTransitPolicy,
   normalizePassportCountry,
   policyCacheKey,
-  qualifiesTransferSavings,
   transferSavings
 };

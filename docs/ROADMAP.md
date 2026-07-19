@@ -2,18 +2,21 @@
 
 ## Current priorities
 
-- Accumulate strategy-specific samples for nearby-airport and open-jaw searches.
-- Add explicit surface-transfer cost/time data before open jaws can earn a
-  high traveler-value action.
-- Improve monthly coverage reporting by destination and travel month.
+- Measure date-first Explore recall and matched exact-price-insight reuse across
+  return and one-way lanes.
+- Accumulate strategy-specific reverse one-way, nearby-airport, and open-jaw
+  evidence so construction selection relies less on exploration value.
+- Maintain explicit surface-transfer cost/time data for open jaws; unknown costs
+  remain ineligible for normal deal alerts.
+- Improve date-lane coverage reporting by destination and travel month.
 - Reconcile Account API usage deltas into a bounded run-history ledger.
 - Replace the empty manual transit-policy set with narrowly scoped, sourced rules
   or a licensed real-time document-requirements provider.
 
 ## Planned improvements
 
-- Compare grouped nearby-airport fares with a same-run canonical-airport fare and
-  require both dollar and percentage savings after access cost.
+- Compare grouped nearby-airport fares with a same-run canonical-airport fare
+  after access cost, without making fixed price alone an alert signal.
 - Use SerpApi multi-city continuation only after fixtures prove cumulative-price
   semantics for the final leg.
 - Monitor more official Singapore airline sale pages with stable extraction.

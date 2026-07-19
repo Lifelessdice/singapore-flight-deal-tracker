@@ -6,7 +6,7 @@ const {
   lookupTransitPolicy,
   normalizePassportCountry,
   policyCacheKey,
-  qualifiesTransferSavings
+  transferSavings
 } = require("../transit-policy");
 
 const NOW = Date.parse("2026-07-18T00:00:00Z");
@@ -326,18 +326,8 @@ async function main() {
   );
   assert.equal(airportChangeTooShort.assessment.status, "self-transfer-rejected");
 
-  const saving = qualifiesTransferSavings(100, 160, {
-    selfTransferMinimumSavingAmount: 40,
-    selfTransferMinimumSavingPercent: 15
-  });
-  assert.deepEqual(saving, { amount: 60, percent: 38, qualifies: true });
-  assert.equal(
-    qualifiesTransferSavings(130, 160, {
-      selfTransferMinimumSavingAmount: 40,
-      selfTransferMinimumSavingPercent: 15
-    }).qualifies,
-    false
-  );
+  assert.deepEqual(transferSavings(100, 160), { amount: 60, percent: 38 });
+  assert.deepEqual(transferSavings(130, 160), { amount: 30, percent: 19 });
 
   console.log("transit policy tests passed");
 }

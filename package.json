@@ -6,7 +6,7 @@
   "scripts": {
     "check": "node --check app.js && node --check fare-insights.js && node --check tracker-product.js && node --check transit-policy.js && node --check scripts/check-fares.js && node test/fare-insights.test.js && node test/tracker-product.test.js && node test/transit-policy.test.js && node test/check-fares.test.js",
     "check:fares": "node --env-file=.env scripts/check-fares.js",
-    "check:fares:once": "node --env-file=.env -e \"process.env.MAX_SEARCHES_PER_RUN='1'; process.env.DISCOVERY_ENABLED='false'; process.env.CONSTRUCTIONS_ENABLED='false'; process.env.FORCE_RUN='true'; require('./scripts/check-fares.js').main()\""
+    "check:fares:once": "node --env-file=.env -e \"process.env.MAX_SEARCHES_PER_RUN='1'; process.env.MAX_CALLS_PER_CYCLE='1'; process.env.DISCOVERY_ENABLED='false'; process.env.CONSTRUCTIONS_ENABLED='false'; process.env.FORCE_RUN='true'; require('./scripts/check-fares.js').main()\""
   },
   "engines": {
     "node": ">=24"

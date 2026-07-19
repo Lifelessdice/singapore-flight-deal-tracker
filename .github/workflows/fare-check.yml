@@ -8,12 +8,12 @@ on:
         required: false
         default: "1"
       run_discovery:
-        description: Include flexible destination discovery and exact verification
+        description: Include date-first destination discovery and exact verification
         required: false
         type: boolean
         default: false
       run_constructions:
-        description: Include nearby-airport and open-jaw construction checks
+        description: Include evidence-selected split, nearby-airport, or open-jaw checks
         required: false
         type: boolean
         default: false
@@ -48,6 +48,7 @@ jobs:
           REQUIRE_NOTIFICATION_CHANNEL: "true"
           FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' }}
           MAX_SEARCHES_PER_RUN: ${{ inputs.max_searches }}
+          MAX_CALLS_PER_CYCLE: ${{ github.event_name == 'workflow_dispatch' && inputs.max_searches || '' }}
           DISCOVERY_ENABLED: ${{ github.event_name != 'workflow_dispatch' || inputs.run_discovery }}
           CONSTRUCTIONS_ENABLED: ${{ github.event_name != 'workflow_dispatch' || inputs.run_constructions }}
         run: node scripts/check-fares.js

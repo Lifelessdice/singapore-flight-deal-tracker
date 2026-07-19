@@ -19,10 +19,10 @@ number.
 | Ticket types | Round trips and one ways |
 | Stops | At most 1 |
 | Duration | At most 15 hours per direction |
-| Listed destinations | 14 nearby Asian airports plus rotating grouped-airport searches |
-| Open-ended discovery | Google Travel Explore searches every configured month |
+| Listed destinations | 14 nearby Asian airports plus evidence-selected grouped-airport searches |
+| Open-ended discovery | Fixed-date Google Travel Explore return and one-way lanes |
 | Discovery verification | The three most useful Explore results are re-priced as exact Google Flights searches |
-| Alternative construction | Rotating nearby-airport groups and open-jaw one-way pairs |
+| Alternative construction | Evidence-selected split, nearby-airport, or open-jaw plan |
 
 The listed `USD 75` one-way and `USD 160` round-trip figures are useful targets.
 They do not, by themselves, make a fare a deal. The `USD 300` Explore limit is a
@@ -67,12 +67,22 @@ ticket strategy.
 
 ## Discovery strategy
 
-Each eligible 48-hour run rotates through August to December using Google Travel
-Explore's weekend-duration search. It keeps only real 2-to-4-day itineraries within
-the stop, duration, and price limits. It then verifies two of the cheapest known
-destinations plus one promising destination outside the fixed list. Exact
-verification is important because discovery prices can be stale or can represent
-a different itinerary than the one ultimately booked.
+Each eligible 48-hour run selects one configured departure/return pair and one
+configured one-way departure date. Each date-first Google Travel Explore request
+can scan many destinations without spending one call per destination. The cursors
+advance independently, so return and one-way coverage cannot crowd each other
+out.
+
+Explore results are not selected by displayed price alone. They are ranked using
+matched protected-route history, fresh Google typical-range evidence retained
+from a compatible exact search, relative discount percentage, duration, stops,
+and the traveler-value score. The documented Explore destination response does
+not itself include a typical range or average-price discount. A result without
+matched relative evidence is labeled exploration-only until exact verification.
+Retained Google market evidence expires after the configured 30-day maximum.
+Up to three results are verified with exact Google Flights searches. Selection
+preserves a one-way option and one unfamiliar destination when they are
+available, including exploration-only options.
 
 SerpApi's first round-trip response describes the outbound selection. Before a
 round-trip price signal can alert, the worker follows its `departure_token` and
@@ -82,21 +92,27 @@ Self-transfers and airport changes continue to a separate late policy/risk check
 
 The normal queue prioritizes routes that have been checked least recently, then
 rotates exact dates inside a 90-day booking horizon. Construction and return
-verification reserves leave up to five routine exact slots in a full scheduled
+verification reserves leave up to six routine exact slots in a full scheduled
 cycle. Coverage is recorded from actual requests, including successful searches
 that return no offers.
 
-For the cheapest verified flexible trip, the worker also prices the outbound and
-return as independent one-way tickets. The split option qualifies only when it
-saves at least both `USD 15` and 10% against the exact same-run return fare.
-Savings of at least `USD 30` and 20% form a strong deal. Because the tickets are
-for opposite travel days rather than a self-connection, a delayed outbound does
-not create a missed-connection risk on the return.
+One alternative-construction plan is selected per run instead of checking split
+tickets and rotating another construction independently. The selector compares
+recent forward and reverse one-way observations, protected-route history,
+previous grouped-airport results, expected savings, evidence freshness, call
+cost, and known surface-transfer cost. Fare evidence older than the configured
+45-day maximum is ignored. It chooses one of:
 
-One rotating construction lane also checks grouped destination airports such as
-`BKK,DMK`, or prices an open jaw such as `SIN-KUL` plus `PEN-SIN`. These strategies
-have separate history and confidence. Open-jaw ground transport is not included,
-so it is disclosed as a material tradeoff and cannot raise statistical confidence.
+- a return rebuilt from two independent one-way tickets;
+- a grouped nearby-airport search such as `BKK,DMK`;
+- an open jaw such as `SIN-KUL` plus `PEN-SIN`.
+
+Raw one-way legs are stored under separate strategies so reverse-price evidence
+improves later construction decisions. Construction evidence must match exact
+departure and return dates, airport group, currency, cabin, passenger count, and
+baggage profile. Known open-jaw
+ground transport is included in the effective price; an unknown surface-transfer
+cost makes expected savings unknown and suppresses a normal deal alert.
 
 The traveler-value score ranks already observed fares from 0 to 100 and emits a
 `BOOK`, `VERIFY`, `WATCH`, or `SKIP` action. It rewards relative anomaly strength,
@@ -111,8 +127,8 @@ unconfirmed baggage. The score cannot turn a mere target hit into a deal.
 - Google's own Flight Deals method uses a historical median adjusted for route,
   season, trip length, cabin, and filters. Google describes savings deals as at
   least 20% below typical, which supports this tracker's strong-deal threshold.
-- Google Travel Explore is used for open-ended destination discovery and short
-  weekend searches.
+- Google Travel Explore is used date-first so one call can compare many
+  destinations for an exact configured return pair or one-way date.
 - Google Flights' date grid, price graph, nearby-airport checks, and Any Dates
   alerts remain useful manual confirmation tools.
 - ITA Matrix is used for routing, connection, airport-change, and itinerary-length
@@ -147,11 +163,12 @@ unconfirmed baggage. The score cannot turn a mere target hit into a deal.
 - Cookies, incognito mode, and a universal "buy on Tuesday" rule are not treated as
   pricing strategies. There is no reliable evidence that they create repeatable
   savings.
-- Self-transfers remain lower priority than protected itineraries. They require a
-  configurable savings premium, sufficient connection time, fresh sourced
-  passport policy, known immigration/baggage/terminal handling, and accounted
-  extra costs. Unknown cases are manual review; paid-visa or short connections
-  are rejected.
+- Self-transfers remain lower priority than protected itineraries because the
+  traveler-value score penalizes their practical risk. They use the same monetary
+  deal rules as protected fares, followed by sufficient connection time, fresh
+  sourced passport policy, known immigration/baggage/terminal handling, and
+  accounted extra costs. Unknown cases are manual review; paid-visa or short
+  connections are rejected.
 - Johor Bahru positioning is not automatically ranked yet. Border queues and
   ground transfers can consume a large share of a 2-to-4-day trip, so airfare
   savings would need a separate total-cost and time model.
@@ -162,12 +179,16 @@ unconfirmed baggage. The score cannot turn a mere target hit into a deal.
 
 GitHub Actions wakes once per day, but the worker only performs a scheduled fare
 cycle after approximately 48 hours. Every billable request uses one global guard
-with a maximum of 14 attempts per cycle. The normal maximum allocation is one
-Explore request, three Explore verifications, two split-ticket requests, five
-exact searches, two construction requests, and one return verification. The
+with a maximum of 14 attempts per cycle. The normal maximum allocation is two
+date-first Explore requests, three Explore verifications, six prioritized exact
+searches, up to two requests for one evidence-selected alternative construction,
+and one return verification. The
 worker reads the free SerpApi Account API before and after each run and protects a
-10-credit reserve. Manual smoke tests disable Explore and constructions, default
-to one exact search, and do not change scheduled cadence.
+10-credit reserve. If the opening balance cannot be verified, the fare budget
+fails closed at zero and scheduled cadence is preserved. A scheduled plan
+truncated by the safe quota is recorded as incomplete rather than as a no-deal
+cycle. Manual smoke tests disable Explore and constructions by default, use a
+one-call total cap, and do not change scheduled cadence.
 
 An acceptable self-transfer means the maintained evidence passed the configured
 checks; it is not a guarantee of admission. Entry and transit rules can change
@@ -183,10 +204,10 @@ changes use separate history strategies and cannot depress that baseline.
 
 The conservative connection defaults are 240 minutes for a confirmed
 same-airport transfer, 360 minutes when immigration, baggage recheck, or terminal
-uncertainty applies, and 480 minutes for an airport change. A transfer also needs
-at least 15% and `USD 40` savings versus a comparable protected itinerary. Extra
-authorization, baggage, ground transport, and overnight costs are included before
-the final savings and deal check.
+uncertainty applies, and 480 minutes for an airport change. Self-transfers have no
+additional monetary threshold beyond the normal relative-deal rules. Extra
+authorization, baggage, ground transport, and overnight costs are included in the
+effective fare before final qualification.
 
 The current `manual-static` policy provider requires source metadata,
 `lastVerifiedAt`, passport validity, onward-travel requirements, visa and

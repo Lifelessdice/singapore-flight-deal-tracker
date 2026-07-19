@@ -21,8 +21,11 @@ spends fare credits only when about 48 hours have passed since the last complete
 scheduled cycle. Skipped wake-ups do not send a heartbeat.
 
 A manual workflow run forces execution, defaults to one exact search, and disables
-Explore and construction unless explicitly selected. Manual runs update usage and
-coverage but do not postpone the next scheduled cycle.
+date-first Explore and alternative construction unless explicitly selected.
+Manual runs update usage and coverage but do not postpone the next scheduled
+cycle or advance the production date-lane cursors. The manual `max_searches`
+input caps both the selected exact queue and the total provider attempts, so a
+one-search discovery smoke test spends at most one credit.
 
 ## Commands
 
@@ -42,7 +45,8 @@ Every completed scheduled cycle sends either:
 - a deal alert with price, relative analysis, confidence evidence, traveler-value
   action, risks, itinerary checks, and links; or
 - a no-deal heartbeat with the cheapest observations, rejection reasons, request
-  usage, exact coverage, construction activity, and promotion-page health.
+  usage, exact coverage, date-first lane coverage, construction activity, and
+  promotion-page health.
 
 Official airline promotion changes are sent as a separate lead. A promotion-page
 change is not a verified flight deal. A new page fingerprint must repeat on two
@@ -56,12 +60,24 @@ authoritative than attempted count because cached or failed provider requests ma
 not consume a credit.
 
 If no safe credits remain, the run must persist its status, fail as incomplete,
-and retain the old `lastCompletedAt`.
+and retain the old `lastCompletedAt`. The same fail-closed behavior applies when
+the opening Account API balance is unavailable or lacks a usable remaining count.
+
+A full scheduled plan cannot exceed 14 billable attempts: two date-first Explore
+calls, three exact Explore verifications, six routine exact searches, two
+alternative-construction calls, and one return verification. When fewer safe
+credits remain, the single shared call guard stops every lane at the lower
+account-reserve limit.
+The 14-call ceiling is also clamped in code; configuration or manual input cannot
+raise it. Zero, negative, or malformed manual limits permit no fare calls.
 
 ## Failure behavior
 
 - All fare requests fail: persist diagnostics, notify Discord, fail the action,
   and do not advance cadence.
+- Account balance unavailable or safe quota truncates a scheduled plan: persist
+  diagnostics, notify Discord, fail the action, and preserve all scheduling
+  cursors.
 - Some requests fail: complete the run and disclose partial provider health.
 - Discord fails: searched state remains persisted; the action fails.
 - Promotion page fails: fare checks continue and the heartbeat records the error.
@@ -77,7 +93,8 @@ preserve billable work.
 
 1. Push a branch or `main` change.
 2. Open Actions and run `Fare check` manually with one search.
-3. Leave discovery and constructions disabled for the smoke test.
+3. Enable discovery and leave constructions disabled to probe one date-first
+   Explore lane without allowing exact follow-up calls.
 4. Confirm tests pass, the fare step succeeds, Discord receives a heartbeat, and
    the state commit succeeds.
 5. Verify `providerStats.attempted` is one and manual execution did not change

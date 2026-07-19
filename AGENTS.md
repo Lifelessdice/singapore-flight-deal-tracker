@@ -54,8 +54,8 @@ market baseline, not merely below a fixed dollar target.
 
 - `scripts/check-fares.js`: provider orchestration, notifications, and persistence.
 - `fare-insights.js`: relative-fare statistics and confidence.
-- `tracker-product.js`: traveler-value scoring, construction rotation, quota,
-  coverage, and promotion helpers.
+- `tracker-product.js`: traveler-value scoring, date-first discovery ranking,
+  evidence-driven construction selection, quota, coverage, and promotion helpers.
 - `transit-policy.js`: provider interface, cache keys, policy staleness, transfer
   timing, cost, and legal/practical classification.
 - `automation/transit-policies.json`: manually maintained, sourced policy rules.

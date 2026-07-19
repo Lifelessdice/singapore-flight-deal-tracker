@@ -2,7 +2,7 @@
   "checkIntervalHours": 48,
   "alertCooldownHours": 168,
   "notifyOnNoDeals": true,
-  "maxSearchesPerRun": 8,
+  "maxSearchesPerRun": 9,
   "exactSearchHorizonDays": 90,
   "oneWaySearchShare": 0.25,
   "returnVerification": {
@@ -32,8 +32,6 @@
   "transitAssessment": {
     "allowSelfTransfers": true,
     "allowAirportChanges": true,
-    "selfTransferMinimumSavingPercent": 15,
-    "selfTransferMinimumSavingAmount": 40,
     "sameAirportSelfTransferMinMinutes": 240,
     "immigrationOrRecheckMinMinutes": 360,
     "airportChangeMinMinutes": 480,
@@ -65,10 +63,14 @@
     "maxDiscoveryPrice": 300,
     "maxStops": 1,
     "maxTotalDurationMinutes": 900,
-    "verifyCount": 3
+    "verifyCount": 3,
+    "marketEvidenceMaxAgeDays": 30,
+    "fixedDateReturnLanesPerRun": 1,
+    "fixedDateOneWayLanesPerRun": 1
   },
   "constructions": {
     "enabled": true,
+    "maximumEvidenceAgeDays": 45,
     "targetRoundTripPrice": 160,
     "airportGroups": [
       {

@@ -3,9 +3,13 @@ const {
   alertKey,
   buildSplitTicketSearches,
   combineRoundTripOffers,
+  evaluateRunCompletion,
+  finalizeWorkerState,
   formatAlert,
   formatNoDealSummary,
   mapSerpApiOffer,
+  searchGoogleTravelExploreLane,
+  selectCandidateOffers,
   selectSearches,
   shouldAlert,
   summarizeCandidate,
@@ -43,7 +47,8 @@ const candidate = {
 const noDeal = formatNoDealSummary([candidate], {
   discoveryResult: {
     exploredCandidates: 20,
-    exploredMonth: 8
+    laneCount: 2,
+    successfulLaneCount: 2
   },
   splitTicketsChecked: 1,
   splitComparisons: [{
@@ -54,15 +59,17 @@ const noDeal = formatNoDealSummary([candidate], {
     roundTripPrice: 110
   }],
   dealCandidates: [],
+  constructionSummary: "evidence selected nearby Bangkok airports",
   checkIntervalHours: 48
 });
 assert.match(noDeal, /No new relative deals/);
 assert.match(noDeal, /SIN -> KUL/);
 assert.match(noDeal, /Sat 2026-08-01/);
 assert.match(noDeal, /USD 80/);
-assert.match(noDeal, /20 options/);
+assert.match(noDeal, /Date-first discovery reviewed 20 options across 2\/2 configured date lanes/);
 assert.match(noDeal, /two one-ways vs USD 110 return/);
 assert.match(noDeal, /separate one-ways save USD 15/);
+assert.match(noDeal, /evidence selected nearby Bangkok airports/);
 assert.match(noDeal, /about 48 hours/);
 assert.match(noDeal, /AirAsia/);
 assert.match(noDeal, /2\/3 prior comparable samples/);
@@ -76,11 +83,20 @@ assert.match(cooldown, /alert cooldown prevented a duplicate/);
 
 const empty = formatNoDealSummary([], {});
 assert.match(empty, /No live candidates were returned/);
+const emptyDiscoveryLane = formatNoDealSummary([], {
+  discoveryResult: {
+    exploredCandidates: 0,
+    laneCount: 1,
+    successfulLaneCount: 1
+  }
+});
+assert.match(emptyDiscoveryLane, /reviewed 0 options across 1\/1 configured date lane/);
 
 const discordSized = formatNoDealSummary([candidate, candidate, candidate], {
   discoveryResult: {
     exploredCandidates: 20,
-    exploredMonth: 8
+    laneCount: 2,
+    successfulLaneCount: 2
   },
   splitTicketsChecked: 1,
   splitComparisons: [{
@@ -110,6 +126,57 @@ const baseSearch = {
   carryOnBags: 0,
   checkedBags: 0
 };
+
+process.env.SERPAPI_API_KEY = "test-key";
+const oneWayExplorePromise = searchGoogleTravelExploreLane(
+  {
+    id: "date-first-one-way|SIN|2026-09-08",
+    laneType: "date-first-one-way",
+    routeId: "student",
+    origin: "SIN",
+    departureDate: "2026-09-08",
+    returnDate: "",
+    tripType: "one-way",
+    adults: 1,
+    currencyCode: "USD",
+    travelClass: "ECONOMY",
+    maxPrice: 75,
+    maxTotalDurationMinutes: 900,
+    maxStops: 1,
+    carryOnBags: 0,
+    checkedBags: 0
+  },
+  async (url) => {
+    assert.equal(url.searchParams.get("engine"), "google_travel_explore");
+    assert.equal(url.searchParams.get("type"), "2");
+    assert.equal(url.searchParams.get("outbound_date"), "2026-09-08");
+    assert.equal(url.searchParams.has("return_date"), false);
+    assert.equal(url.searchParams.get("bags"), "0");
+    return {
+      ok: true,
+      json: async () => ({
+        destinations: [{
+          name: "Penang",
+          destination_airport: { code: "PEN" },
+          start_date: "2026-09-08",
+          flight_price: 45,
+          flight_duration: 80,
+          number_of_stops: 0
+        }]
+      })
+    };
+  },
+  Date.parse("2026-07-18T00:00:00Z")
+).then((result) => {
+  assert.equal(result.ok, true);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].tripType, "one-way");
+  assert.equal(result.candidates[0].destination, "PEN");
+  assert.equal(
+    result.candidates[0].observedAt,
+    Date.parse("2026-07-18T00:00:00Z")
+  );
+});
 
 const splitSearches = buildSplitTicketSearches(baseSearch);
 assert.equal(splitSearches.length, 2);
@@ -222,6 +289,23 @@ assert.equal(mappedTransfer.hasAirportChange, true);
 assert.equal(mappedTransfer.itineraryProtection, "self-transfer");
 assert.equal(mappedTransfer.connections[0].transitCountry, "THA");
 assert.equal(mappedTransfer.connections[0].durationMinutes, 540);
+
+const protectedAndTransfer = selectCandidateOffers([
+  {
+    price: 90,
+    itineraryProtection: "protected",
+    hasSelfTransfer: false,
+    hasAirportChange: false
+  },
+  {
+    price: 100,
+    itineraryProtection: "self-transfer",
+    hasSelfTransfer: true,
+    hasAirportChange: false
+  }
+]);
+assert.equal(protectedAndTransfer.length, 2);
+assert.equal(protectedAndTransfer[1].protectedComparablePrice, 90);
 
 const verifiedSelfTransferPromise = verifyRoundTripOffer(
   baseSearch,
@@ -341,10 +425,22 @@ assert.equal(
     ...acceptableTransferCandidate,
     entry: {
       ...acceptableTransferCandidate.entry,
-      transferSavingsQualifies: false
+      itineraryProtection: "protected",
+      searchStrategy: "open-jaw",
+      constructionCostComplete: false
     }
   }),
   false
+);
+assert.equal(
+  shouldAlert({
+    ...acceptableTransferCandidate,
+    entry: {
+      ...acceptableTransferCandidate.entry,
+      transferSavingsQualifies: false
+    }
+  }),
+  true
 );
 const acceptableAlert = formatAlert([{
   ...acceptableTransferCandidate,
@@ -368,6 +464,8 @@ const acceptableAlert = formatAlert([{
   entry: {
     ...acceptableTransferCandidate.entry,
     baseFare: 80,
+    extraEstimatedCost: 12,
+    price: 92,
     transferSavings: 50,
     transferSavingsPercent: 38,
     returnVerified: true,
@@ -390,6 +488,11 @@ const acceptableAlert = formatAlert([{
   }
 }]);
 assert.match(acceptableAlert, /ACCEPTABLE SELF-TRANSFER/);
+assert.match(
+  acceptableAlert,
+  /USD 80 base fare \+ USD 12 estimated transfer requirements = USD 92/
+);
+assert.match(acceptableAlert, /informational, not an eligibility threshold/);
 assert.match(acceptableAlert, /Separate tickets are unprotected/);
 
 const rejectedCandidate = {
@@ -406,6 +509,108 @@ const rejectedCandidate = {
 };
 const rejectedHeartbeat = formatNoDealSummary([rejectedCandidate], {});
 assert.match(rejectedHeartbeat, /Rejected self-transfers: 1/);
+
+const originalWorkerState = {
+  cursor: 2,
+  dateFirstReturnCursor: 3,
+  dateFirstOneWayCursor: 4,
+  constructionEvidence: { prior: { score: 10 } },
+  lastCompletedAt: "2026-07-17T00:00:00.000Z"
+};
+const proposedWorkerState = {
+  ...originalWorkerState,
+  cursor: 8,
+  dateFirstReturnCursor: 9,
+  dateFirstOneWayCursor: 10,
+  constructionEvidence: { current: { score: 20 } },
+  lastCompletedAt: "2026-07-19T00:00:00.000Z"
+};
+const accountUnavailable = evaluateRunCompletion({
+  accountAvailable: false,
+  forceRun: false,
+  providerStats: {
+    attempted: 0,
+    successful: 0,
+    skipped: 1,
+    byKind: {}
+  }
+});
+assert.equal(accountUnavailable.complete, false);
+const preservedUnavailableState = finalizeWorkerState(
+  originalWorkerState,
+  proposedWorkerState,
+  { completion: accountUnavailable, forceRun: false }
+);
+assert.equal(preservedUnavailableState.cursor, 2);
+assert.equal(preservedUnavailableState.dateFirstReturnCursor, 3);
+assert.deepEqual(
+  preservedUnavailableState.constructionEvidence,
+  originalWorkerState.constructionEvidence
+);
+assert.equal(
+  preservedUnavailableState.lastCompletedAt,
+  originalWorkerState.lastCompletedAt
+);
+
+const quotaTruncated = evaluateRunCompletion({
+  accountAvailable: true,
+  forceRun: false,
+  providerStats: {
+    attempted: 1,
+    successful: 1,
+    skipped: 4,
+    byKind: {
+      "date-first-return": { successful: 1 }
+    }
+  }
+});
+assert.equal(quotaTruncated.complete, false);
+assert.equal(quotaTruncated.successfulFareRequests, 0);
+
+const healthyScheduledRun = evaluateRunCompletion({
+  accountAvailable: true,
+  forceRun: false,
+  providerStats: {
+    attempted: 2,
+    successful: 2,
+    skipped: 0,
+    byKind: {
+      "date-first-return": { successful: 1 },
+      exact: { successful: 1 }
+    }
+  }
+});
+assert.equal(healthyScheduledRun.complete, true);
+assert.deepEqual(
+  finalizeWorkerState(
+    originalWorkerState,
+    proposedWorkerState,
+    { completion: healthyScheduledRun, forceRun: false }
+  ),
+  proposedWorkerState
+);
+
+const healthyForcedProbe = evaluateRunCompletion({
+  accountAvailable: true,
+  forceRun: true,
+  providerStats: {
+    attempted: 1,
+    successful: 1,
+    skipped: 3,
+    byKind: {
+      "date-first-one-way": { successful: 1 }
+    }
+  }
+});
+assert.equal(healthyForcedProbe.complete, true);
+assert.equal(
+  finalizeWorkerState(
+    originalWorkerState,
+    proposedWorkerState,
+    { completion: healthyForcedProbe, forceRun: true }
+  ).lastCompletedAt,
+  originalWorkerState.lastCompletedAt
+);
 
 assert.notEqual(
   alertKey({ entry: { ...candidate.entry, departureDate: "2026-08-01" } }),
@@ -443,7 +648,7 @@ assert.equal(selectedSearches.filter((search) => search.tripType === "round-trip
 assert.equal(selectedSearches.filter((search) => search.tripType === "one-way").length, 1);
 assert.equal(selectedSearches.some((search) => search.destination === "HKG"), false);
 
-verifiedSelfTransferPromise
+Promise.all([verifiedSelfTransferPromise, oneWayExplorePromise])
   .then(() => console.log("fare notification tests passed"))
   .catch((error) => {
     console.error(error);

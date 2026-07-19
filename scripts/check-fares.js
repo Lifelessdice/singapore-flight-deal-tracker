@@ -6,11 +6,17 @@ const {
   hasSameBaggageProfile
 } = require("../fare-insights");
 const {
+  buildDateFirstExploreLanes,
   buildConstructionLane,
   buildQuotaSnapshot,
   checkPromotionSources,
+  createCallBudget,
+  rankExploreCandidates,
+  resolveCallLimit,
   scoreTravelerValue,
+  selectExploreCandidates,
   summarizeCoverage,
+  updateDateFirstExploreState,
   updateCoverage
 } = require("../tracker-product");
 const {
@@ -18,7 +24,7 @@ const {
   assessTransferRisk,
   isKnownNumber,
   normalizePassportCountry,
-  qualifiesTransferSavings
+  transferSavings
 } = require("../transit-policy");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -354,7 +360,9 @@ function mapSerpApiOffer(offer, search, priceInsights) {
     baggageNotes: extensions.filter((extension) => /bag|carry-on|personal item/i.test(extension)),
     rawId: offer.departure_token || "",
     bookingToken: offer.booking_token || "",
-    googlePriceInsights: priceInsights || null
+    averagePrice: search.discoveryAveragePrice ?? null,
+    discountPercentage: search.discoveryDiscountPercentage ?? null,
+    googlePriceInsights: priceInsights || search.discoveryGooglePriceInsights || null
   };
 }
 
@@ -526,18 +534,16 @@ function selectCandidateOffers(offers, transferConfig = {}) {
   const selected = [];
   if (protectedOffer) selected.push(protectedOffer);
   for (const transferOffer of transferOffers) {
-    if (protectedOffer && transferOffer.price >= protectedOffer.price) continue;
-    const savings = qualifiesTransferSavings(
+    const savings = transferSavings(
       transferOffer.price,
-      protectedOffer?.price,
-      transferConfig
+      protectedOffer?.price
     );
     selected.push({
       ...transferOffer,
       protectedComparablePrice: protectedOffer?.price ?? null,
       transferSavings: savings.amount,
       transferSavingsPercent: savings.percent,
-      transferSavingsQualifies: savings.qualifies
+      transferSavingsQualifies: null
     });
   }
   return selected.length ? selected : sorted.slice(0, 1);
@@ -565,47 +571,41 @@ async function getSerpApiAccount() {
   }
 }
 
-async function searchGoogleTravelExplore(discovery, state, knownDestinations) {
-  if (!discovery?.enabled) {
-    return {
-      ok: true,
-      searches: [],
-      nextMonthCursor: Number(state.discoveryMonthCursor || 0)
-    };
-  }
+async function searchGoogleTravelExploreLane(
+  lane,
+  fetchImpl = fetch,
+  now = Date.now()
+) {
   assertEnv("SERPAPI_API_KEY");
 
-  const months = discovery.months || [];
-  const monthCursor = months.length ? Number(state.discoveryMonthCursor || 0) % months.length : 0;
-  const month = months[monthCursor];
   const url = new URL(SERPAPI_BASE_URL);
   url.searchParams.set("engine", "google_travel_explore");
   url.searchParams.set("api_key", process.env.SERPAPI_API_KEY);
-  url.searchParams.set("departure_id", discovery.origin || "SIN");
-  url.searchParams.set("type", "1");
-  if (month) url.searchParams.set("month", String(month));
-  url.searchParams.set("travel_duration", "1");
-  url.searchParams.set("adults", String(discovery.adults || 1));
-  url.searchParams.set("currency", discovery.currencyCode || "USD");
-  url.searchParams.set("travel_class", getTravelClassCode(discovery.travelClass));
+  url.searchParams.set("departure_id", lane.origin);
+  url.searchParams.set("type", lane.tripType === "one-way" ? "2" : "1");
+  url.searchParams.set("outbound_date", lane.departureDate);
+  if (lane.returnDate) url.searchParams.set("return_date", lane.returnDate);
+  url.searchParams.set("adults", String(lane.adults || 1));
+  url.searchParams.set("currency", lane.currencyCode || "USD");
+  url.searchParams.set("travel_class", getTravelClassCode(lane.travelClass));
   url.searchParams.set("gl", "sg");
   url.searchParams.set("hl", "en");
   url.searchParams.set("travel_mode", "1");
-  url.searchParams.set("stops", String((Number(discovery.maxStops) || 0) + 1));
-  if (discovery.maxDiscoveryPrice) {
-    url.searchParams.set("max_price", String(discovery.maxDiscoveryPrice));
+  url.searchParams.set("stops", String((Number(lane.maxStops) || 0) + 1));
+  url.searchParams.set("bags", String(Math.max(0, Number(lane.carryOnBags) || 0)));
+  if (lane.maxDiscoveryPrice) {
+    url.searchParams.set("max_price", String(lane.maxDiscoveryPrice));
   }
-  if (discovery.maxTotalDurationMinutes) {
-    url.searchParams.set("max_duration", String(discovery.maxTotalDurationMinutes));
+  if (lane.maxTotalDurationMinutes) {
+    url.searchParams.set("max_duration", String(lane.maxTotalDurationMinutes));
   }
 
-  const response = await fetch(url);
+  const response = await fetchImpl(url);
   if (!response.ok) {
     return {
       ok: false,
-      error: `Google Travel Explore search failed: ${response.status} ${await response.text()}`,
-      searches: [],
-      nextMonthCursor: monthCursor
+      error: `Google Travel Explore ${lane.laneType} search failed: ${response.status} ${await response.text()}`,
+      candidates: []
     };
   }
 
@@ -613,73 +613,125 @@ async function searchGoogleTravelExplore(discovery, state, knownDestinations) {
   if (data.error) {
     return {
       ok: false,
-      error: `Google Travel Explore error: ${data.error}`,
-      searches: [],
-      nextMonthCursor: monthCursor
+      error: `Google Travel Explore ${lane.laneType} error: ${data.error}`,
+      candidates: []
     };
   }
 
   const candidates = (data.destinations || [])
     .map((destination) => {
       const airportCode = destination.destination_airport?.code;
-      const depart = Date.parse(`${destination.start_date}T00:00:00Z`);
-      const ret = Date.parse(`${destination.end_date}T00:00:00Z`);
-      const tripDays = Math.round((ret - depart) / (24 * 60 * 60 * 1000));
-      return { destination, airportCode, depart, tripDays };
+      const departureDate = destination.start_date || lane.departureDate;
+      const returnDate = lane.tripType === "round-trip"
+        ? destination.end_date || lane.returnDate
+        : "";
+      const departure = Date.parse(`${departureDate}T00:00:00Z`);
+      const returning = returnDate
+        ? Date.parse(`${returnDate}T00:00:00Z`)
+        : null;
+      const tripLengthDays = returning
+        ? Math.round((returning - departure) / (24 * 60 * 60 * 1000))
+        : null;
+      return {
+        origin: lane.origin,
+        destination: airportCode,
+        destinationName: destination.name || airportCode,
+        departureDate,
+        returnDate,
+        tripType: lane.tripType,
+        tripLengthDays,
+        price: Number(destination.flight_price),
+        averagePrice: null,
+        discountPercentage: null,
+        googlePriceInsights: null,
+        totalDurationMinutes: Number.isFinite(Number(destination.flight_duration))
+          ? Number(destination.flight_duration)
+          : null,
+        stops: Number.isFinite(Number(destination.number_of_stops))
+          ? Number(destination.number_of_stops)
+          : null,
+        airline: destination.airline || "",
+        airlineCode: destination.airline_code || "",
+        maxPrice: lane.maxPrice,
+        maxDiscoveryPrice: lane.maxDiscoveryPrice,
+        maxTotalDurationMinutes: lane.maxTotalDurationMinutes,
+        maxStops: lane.maxStops,
+        adults: lane.adults,
+        currencyCode: lane.currencyCode,
+        travelClass: lane.travelClass,
+        passportNationality: lane.passportNationality,
+        passportCountryCode: lane.passportCountryCode,
+        carryOnBags: lane.carryOnBags,
+        checkedBags: lane.checkedBags,
+        baggageProfile: lane.baggageProfile,
+        transitAirportCountries: lane.transitAirportCountries,
+        laneId: lane.id,
+        laneType: lane.laneType,
+        routeId: lane.routeId,
+        observedAt: now,
+        googleFlightsUrl: destination.link || destination.flight_link || null
+      };
     })
-    .filter(({ airportCode, depart }) => airportCode && Number.isFinite(depart) && depart > Date.now())
-    .filter(({ destination }) => Number.isFinite(Number(destination.flight_price)))
-    .filter(({ tripDays }) => (
-      tripDays >= Number(discovery.minTripDays || 2) &&
-      tripDays <= Number(discovery.maxTripDays || 4)
+    .filter((candidate) => candidate.destination && candidate.destination !== candidate.origin)
+    .filter((candidate) => Number.isFinite(candidate.price) && candidate.price > 0)
+    .filter((candidate) => (
+      Number.isFinite(candidate.totalDurationMinutes) &&
+      Number.isFinite(candidate.stops)
     ))
-    .filter(({ destination }) => (
-      !discovery.maxTotalDurationMinutes ||
-      Number(destination.flight_duration) <= Number(discovery.maxTotalDurationMinutes)
+    .filter((candidate) => (
+      Date.parse(`${candidate.departureDate}T00:00:00Z`) > now
     ))
-    .filter(({ destination }) => Number(destination.number_of_stops) <= Number(discovery.maxStops))
-    .sort((a, b) => Number(a.destination.flight_price) - Number(b.destination.flight_price));
-
-  const known = candidates.filter(({ airportCode }) => knownDestinations.has(airportCode));
-  const newDestinations = candidates.filter(({ airportCode }) => !knownDestinations.has(airportCode));
-  const verifyCount = Number(discovery.verifyCount || 3);
-  const selected = [
-    ...known.slice(0, Math.max(1, verifyCount - 1)),
-    ...newDestinations.slice(0, 1)
-  ].slice(0, verifyCount);
-
-  const searches = selected.map(({ destination, airportCode }) => ({
-    routeId: `explore-${discovery.origin || "SIN"}-${airportCode}`,
-    label: `${destination.name || airportCode} flexible discovery`,
-    origin: discovery.origin || "SIN",
-    destination: airportCode,
-    destinationName: destination.name || airportCode,
-    departureDate: destination.start_date,
-    returnDate: destination.end_date,
-    adults: discovery.adults || 1,
-    currencyCode: discovery.currencyCode || "USD",
-    travelClass: discovery.travelClass || "ECONOMY",
-    maxPrice: Number(discovery.targetRoundTripPrice) || null,
-    tripType: "round-trip",
-    maxTotalDurationMinutes: Number(discovery.maxTotalDurationMinutes) || null,
-    maxStops: Number(discovery.maxStops),
-    passportNationality: discovery.passportNationality || "Switzerland",
-    passportCountryCode: normalizePassportCountry(
-      discovery.passportCountryCode || "CHE"
-    ),
-    carryOnBags: Math.max(0, Number(discovery.carryOnBags) || 0),
-    checkedBags: Math.max(0, Number(discovery.checkedBags) || 0),
-    baggageProfile: discovery.baggageProfile || "",
-    transitAirportCountries: discovery.transitAirportCountries || {},
-    discoveryPrice: Number(destination.flight_price)
-  }));
+    .filter((candidate) => candidate.departureDate === lane.departureDate)
+    .filter((candidate) => (
+      lane.tripType === "one-way" ||
+      (
+        candidate.returnDate === lane.returnDate &&
+        candidate.tripLengthDays === lane.tripLengthDays
+      )
+    ))
+    .filter((candidate) => (
+      !lane.maxTotalDurationMinutes ||
+      candidate.totalDurationMinutes <= Number(lane.maxTotalDurationMinutes)
+    ))
+    .filter((candidate) => candidate.stops <= Number(lane.maxStops));
 
   return {
     ok: true,
-    searches,
-    exploredMonth: month,
-    exploredCandidates: candidates.length,
-    nextMonthCursor: months.length ? (monthCursor + 1) % months.length : 0
+    lane,
+    candidates
+  };
+}
+
+function buildExploreVerificationSearch(candidate) {
+  return {
+    routeId: `explore-${candidate.origin}-${candidate.destination}`,
+    label: `${candidate.destinationName || candidate.destination} date-first discovery`,
+    origin: candidate.origin,
+    destination: candidate.destination,
+    destinationName: candidate.destinationName || candidate.destination,
+    departureDate: candidate.departureDate,
+    returnDate: candidate.returnDate || "",
+    adults: candidate.adults || 1,
+    currencyCode: candidate.currencyCode || "USD",
+    travelClass: candidate.travelClass || "ECONOMY",
+    maxPrice: candidate.maxPrice,
+    tripType: candidate.tripType,
+    maxTotalDurationMinutes: candidate.maxTotalDurationMinutes,
+    maxStops: candidate.maxStops,
+    passportNationality: candidate.passportNationality || "Switzerland",
+    passportCountryCode: normalizePassportCountry(
+      candidate.passportCountryCode || "CHE"
+    ),
+    carryOnBags: Math.max(0, Number(candidate.carryOnBags) || 0),
+    checkedBags: Math.max(0, Number(candidate.checkedBags) || 0),
+    baggageProfile: candidate.baggageProfile || "",
+    transitAirportCountries: candidate.transitAirportCountries || {},
+    discoveryPrice: candidate.price,
+    discoveryAveragePrice: candidate.averagePrice,
+    discoveryDiscountPercentage: candidate.discountPercentage,
+    discoveryGooglePriceInsights: candidate.googlePriceInsights,
+    discoveryEvidence: candidate.ranking,
+    googleFlightsUrl: candidate.googleFlightsUrl || null
   };
 }
 
@@ -728,6 +780,8 @@ function summarizeCandidate(search, offer, history) {
     carryOnBags: search.carryOnBags || 0,
     checkedBags: search.checkedBags || 0,
     baggageProfile: search.baggageProfile || null,
+    adults: Number(search.adults || 1),
+    travelClass: search.travelClass || "ECONOMY",
     maxStops: offer.maxStops,
     returnVerified: Boolean(offer.verifiedRoundTrip),
     itineraryProtection: offer.itineraryProtection || "protected",
@@ -751,6 +805,9 @@ function summarizeCandidate(search, offer, history) {
       sameRoute &&
       (item.tripType || (item.returnDate ? "round-trip" : "one-way")) === search.tripType &&
       hasSameBaggageProfile(item, search) &&
+      String(item.currency || entry.currency) === String(entry.currency) &&
+      String(item.travelClass || entry.travelClass) === entry.travelClass &&
+      Number(item.adults ?? entry.adults) === entry.adults &&
       normalizedHistoryStrategy(item) === historyStrategy
     );
   });
@@ -889,9 +946,18 @@ function summarizeOpenJawCandidate(
   inboundOffer,
   history
 ) {
+  const surfaceTransferCost = Number(definition.surfaceTransferCost);
+  const hasKnownSurfaceTransferCost = (
+    definition.surfaceTransferCost !== null &&
+    definition.surfaceTransferCost !== undefined &&
+    definition.surfaceTransferCost !== "" &&
+    Number.isFinite(surfaceTransferCost) &&
+    surfaceTransferCost >= 0
+  );
   const combinedOffer = {
     source: "Open-jaw one-way combination via Google Flights",
-    price: outboundOffer.price + inboundOffer.price,
+    price: outboundOffer.price + inboundOffer.price +
+      (hasKnownSurfaceTransferCost ? surfaceTransferCost : 0),
     currency: referenceSearch.currencyCode,
     totalDurationMinutes: outboundOffer.totalDurationMinutes + inboundOffer.totalDurationMinutes,
     outboundDurationMinutes: outboundOffer.totalDurationMinutes,
@@ -922,7 +988,11 @@ function summarizeOpenJawCandidate(
   candidate.entry.searchStrategy = "open-jaw";
   candidate.entry.outboundDestination = definition.outboundDestination;
   candidate.entry.inboundOrigin = definition.inboundOrigin;
-  candidate.entry.notes = `${outboundOffer.airlines.join(", ") || "unknown carrier"} from ${referenceSearch.origin} to ${definition.outboundDestination}, then ${inboundOffer.airlines.join(", ") || "unknown carrier"} from ${definition.inboundOrigin} to ${referenceSearch.origin}; ${Math.round(outboundOffer.totalDurationMinutes / 60)}h outbound and ${Math.round(inboundOffer.totalDurationMinutes / 60)}h return-side flight. Ground transport between ${definition.outboundDestination} and ${definition.inboundOrigin} is not included`;
+  candidate.entry.constructionCostComplete = hasKnownSurfaceTransferCost;
+  candidate.entry.constructionExtraEstimatedCost = hasKnownSurfaceTransferCost
+    ? surfaceTransferCost
+    : null;
+  candidate.entry.notes = `${outboundOffer.airlines.join(", ") || "unknown carrier"} from ${referenceSearch.origin} to ${definition.outboundDestination}, then ${inboundOffer.airlines.join(", ") || "unknown carrier"} from ${definition.inboundOrigin} to ${referenceSearch.origin}; ${Math.round(outboundOffer.totalDurationMinutes / 60)}h outbound and ${Math.round(inboundOffer.totalDurationMinutes / 60)}h return-side flight. Ground transport between ${definition.outboundDestination} and ${definition.inboundOrigin} ${hasKnownSurfaceTransferCost ? `is estimated at ${referenceSearch.currencyCode} ${surfaceTransferCost} and included` : "has unknown cost and is not included"}`;
   candidate.links.outboundGoogleFlights = getGoogleFlightsUrl({
     ...referenceSearch,
     destination: definition.outboundDestination,
@@ -945,9 +1015,14 @@ function isFareDeal(candidate) {
 
 function shouldAlert(candidate) {
   if (!isFareDeal(candidate)) return false;
+  if (
+    candidate.entry.searchStrategy === "open-jaw" &&
+    candidate.entry.constructionCostComplete === false
+  ) {
+    return false;
+  }
   if ((candidate.entry.itineraryProtection || "protected") === "protected") return true;
-  return candidate.entry.transferSavingsQualifies === true &&
-    candidate.entry.transferAssessment?.status === "self-transfer-acceptable";
+  return candidate.entry.transferAssessment?.status === "self-transfer-acceptable";
 }
 
 function alertKey(candidate) {
@@ -1019,9 +1094,23 @@ function formatAlert(candidates) {
     }
     const transfer = entry.transferAssessment;
     if (transfer?.status === "self-transfer-acceptable") {
+      lines.push("Transfer status: ACCEPTABLE SELF-TRANSFER.");
       lines.push(
-        `Transfer status: ACCEPTABLE SELF-TRANSFER | saves ${entry.currency} ${entry.transferSavings} (${entry.transferSavingsPercent}%) versus the comparable protected fare.`
+        `Effective cost: ${entry.currency} ${entry.baseFare} base fare + ${entry.currency} ${entry.extraEstimatedCost} estimated transfer requirements = ${entry.currency} ${entry.price}.`
       );
+      if (
+        Number.isFinite(Number(entry.transferSavings)) &&
+        Number.isFinite(Number(entry.transferSavingsPercent))
+      ) {
+        const cheaper = Number(entry.transferSavings) >= 0;
+        lines.push(
+          `Protected comparison: ${entry.currency} ${Math.abs(Number(entry.transferSavings))} (${Math.abs(Number(entry.transferSavingsPercent))}%) ${cheaper ? "cheaper than" : "more than"} the comparable protected fare; this comparison is informational, not an eligibility threshold.`
+        );
+      } else {
+        lines.push(
+          "Protected comparison: no same-run protected fare was available; no additional monetary threshold was applied."
+        );
+      }
       lines.push(
         `Connection evidence: ${transfer.shortestConnectionMinutes} minutes minimum observed; ${transfer.minimumRecommendedConnectionMinutes} recommended; transit ${transfer.transitAirports.join(", ") || "airport unknown"}; immigration ${transfer.immigrationLikely ? "likely" : "not expected"}; baggage recheck ${transfer.baggageRecheckLikely ? "likely" : "not expected"}.`
       );
@@ -1077,12 +1166,6 @@ function explainNoDeal(insights, entry = {}) {
   }
   if (entry.transferAssessment?.status === "self-transfer-rejected") {
     return `self-transfer rejected: ${entry.transferAssessment.reasons.join(" ")}`;
-  }
-  if (
-    entry.itineraryProtection === "self-transfer" &&
-    entry.transferSavingsQualifies === false
-  ) {
-    return `self-transfer savings do not meet both configured risk premiums`;
   }
   if (entry.verificationError) {
     return `the price signal qualified, but the return itinerary was not safe to alert: ${entry.verificationError}`;
@@ -1161,9 +1244,9 @@ function formatNoDealSummary(candidates, options = {}) {
     `Checked ${candidates.length} live fare candidate${candidates.length === 1 ? "" : "s"}.`
   ];
 
-  if (discoveryResult.exploredCandidates) {
+  if (discoveryResult.laneCount) {
     lines.push(
-      `Flexible discovery reviewed ${discoveryResult.exploredCandidates} option${discoveryResult.exploredCandidates === 1 ? "" : "s"} for month ${discoveryResult.exploredMonth}.`
+      `Date-first discovery reviewed ${discoveryResult.exploredCandidates} option${discoveryResult.exploredCandidates === 1 ? "" : "s"} across ${discoveryResult.successfulLaneCount || 0}/${discoveryResult.laneCount || 0} configured date lane${discoveryResult.laneCount === 1 ? "" : "s"}.`
     );
   }
   if (options.splitTicketsChecked) {
@@ -1332,6 +1415,63 @@ async function deliverNotifications(message) {
   await sendDiscord(message);
 }
 
+function evaluateRunCompletion({
+  accountAvailable,
+  forceRun,
+  providerStats
+}) {
+  const stats = providerStats || {};
+  const successfulFareRequests = Object.entries(stats.byKind || {})
+    .filter(([kind]) => !kind.startsWith("date-first-"))
+    .reduce((total, [, values]) => total + Number(values.successful || 0), 0);
+
+  if (!accountAvailable) {
+    return {
+      complete: false,
+      reason: "SerpApi account balance was unavailable, so the quota reserve failed closed.",
+      successfulFareRequests
+    };
+  }
+  if (Number(stats.successful || 0) === 0) {
+    return {
+      complete: false,
+      reason: Number(stats.attempted || 0)
+        ? "All attempted Google Flights requests failed."
+        : "No Google Flights request could run within the safe quota.",
+      successfulFareRequests
+    };
+  }
+  if (!forceRun && Number(stats.skipped || 0) > 0) {
+    return {
+      complete: false,
+      reason: "The safe quota was exhausted before the scheduled search plan completed.",
+      successfulFareRequests
+    };
+  }
+  if (!forceRun && successfulFareRequests === 0) {
+    return {
+      complete: false,
+      reason: "Discovery returned, but no exact Google Flights fare request completed.",
+      successfulFareRequests
+    };
+  }
+  return { complete: true, reason: null, successfulFareRequests };
+}
+
+function finalizeWorkerState(state, proposedState, options = {}) {
+  const preserveProgress = Boolean(options.forceRun) ||
+    !options.completion?.complete;
+  if (!preserveProgress) return proposedState;
+  return {
+    ...proposedState,
+    cursor: Number(state.cursor || 0),
+    dateFirstReturnCursor: Number(state.dateFirstReturnCursor || 0),
+    dateFirstOneWayCursor: Number(state.dateFirstOneWayCursor || 0),
+    constructionEvidence: state.constructionEvidence || {},
+    lastCompletedAt: state.lastCompletedAt
+  };
+}
+
 async function main() {
   const configPath = fs.existsSync(CONFIG_PATH) ? CONFIG_PATH : EXAMPLE_CONFIG_PATH;
   const config = readJson(configPath, { routes: [] });
@@ -1407,6 +1547,7 @@ async function main() {
   let returnVerificationsPassed = 0;
   const splitComparisons = [];
   let constructionSummary = "";
+  let nextConstructionEvidence = { ...(state.constructionEvidence || {}) };
   let nextCoverage = { ...(state.coverageLedger || {}) };
   const accountBeforeResult = await getSerpApiAccount();
   if (!accountBeforeResult.ok) console.warn(accountBeforeResult.error);
@@ -1414,13 +1555,15 @@ async function main() {
     accountBeforeResult.ok ? accountBeforeResult.account : null,
     config.quota?.reserveSearches || 10
   );
-  const maximumCallsPerCycle = Math.max(
-    1,
-    Number(config.quota?.maxCallsPerCycle || 14)
+  const maximumCallsPerCycle = resolveCallLimit(
+    config.quota?.maxCallsPerCycle,
+    process.env.MAX_CALLS_PER_CYCLE
   );
-  const budgetLimit = quota.spendableThisRun === null
-    ? maximumCallsPerCycle
-    : Math.min(maximumCallsPerCycle, quota.spendableThisRun);
+  const budgetLimit = accountBeforeResult.ok &&
+    quota.spendableThisRun !== null
+    ? Math.min(maximumCallsPerCycle, quota.spendableThisRun)
+    : 0;
+  const callBudget = createCallBudget(maximumCallsPerCycle, budgetLimit);
   const providerStats = {
     attempted: 0,
     successful: 0,
@@ -1429,8 +1572,9 @@ async function main() {
     byKind: {},
     errors: []
   };
-  const canSpend = () => providerStats.attempted < budgetLimit;
+  const canSpend = () => callBudget.canSpend();
   const recordProviderResult = (kind, result) => {
+    callBudget.recordAttempt();
     providerStats.byKind[kind] ||= { attempted: 0, successful: 0, failed: 0 };
     providerStats.byKind[kind].attempted += 1;
     providerStats.attempted += 1;
@@ -1472,110 +1616,109 @@ async function main() {
   const knownDestinations = new Set(config.routes.flatMap((route) => (
     route.destinationLocationCodes || [route.destinationLocationCode || route.destination]
   )).filter(Boolean));
-  let discoveryResult;
-  if (discoveryEnabled && !canSpend()) {
-    providerStats.skipped += 1;
-    discoveryResult = {
-      ok: false,
-      error: "Flexible discovery skipped because the run has no safe SerpApi credits left.",
-      searches: [],
-      nextMonthCursor: Number(state.discoveryMonthCursor || 0)
-    };
-  } else {
-    try {
-      discoveryResult = await searchGoogleTravelExplore(
-        {
+  const discoveryConfig = {
+    ...traveler,
+    transitAirportCountries: transferConfig.airportCountries || {},
+    ...config.discovery,
+    enabled: discoveryEnabled
+  };
+  const explorePlan = discoveryEnabled
+    ? buildDateFirstExploreLanes(
+        config.routes.map((route) => ({
           ...traveler,
           transitAirportCountries: transferConfig.airportCountries || {},
-          ...config.discovery,
-          enabled: discoveryEnabled
-        },
-        state,
-        knownDestinations
+          ...route
+        })),
+        discoveryConfig,
+        state
+      )
+    : {
+        lanes: [],
+        nextReturnCursor: Number(state.dateFirstReturnCursor || 0),
+        nextOneWayCursor: Number(state.dateFirstOneWayCursor || 0)
+      };
+  const rawExploreCandidates = [];
+  let successfulExploreLanes = 0;
+  let successfulReturnLanes = 0;
+  let successfulOneWayLanes = 0;
+  for (const lane of discoveryEnabled ? explorePlan.lanes : []) {
+    if (!canSpend()) {
+      providerStats.skipped += 1;
+      console.warn(
+        `Skipping ${lane.laneType} Explore lane to preserve the quota reserve and cycle cap.`
       );
+      continue;
+    }
+    let result;
+    try {
+      result = await searchGoogleTravelExploreLane(lane);
     } catch (error) {
-      discoveryResult = {
+      result = {
         ok: false,
         error: `Google Travel Explore request failed: ${error.message}`,
-        searches: [],
-        nextMonthCursor: Number(state.discoveryMonthCursor || 0)
+        candidates: []
       };
     }
-    if (discoveryEnabled) recordProviderResult("explore", discoveryResult);
-  }
-  if (!discoveryResult.ok) {
-    console.warn(discoveryResult.error);
-  } else {
-    for (const search of discoveryResult.searches) {
-      const result = await trackedSearch(search, undefined, "explore-verify");
-      if (!result.ok) {
-        console.warn(result.error);
-        continue;
-      }
-      const searchCandidates = summarizeSearchOffers(
-        search,
-        result.offers,
-        history,
-        transferConfig,
-        "Google Travel Explore, verified via Google Flights"
-      );
-      candidates.push(...searchCandidates);
-      newEntries.push(...searchCandidates.map((candidate) => candidate.entry));
+    recordProviderResult(lane.laneType, result);
+    if (!result.ok) {
+      console.warn(result.error);
+      continue;
     }
+    successfulExploreLanes += 1;
+    if (lane.laneType === "date-first-return") successfulReturnLanes += 1;
+    if (lane.laneType === "date-first-one-way") successfulOneWayLanes += 1;
+    rawExploreCandidates.push(...result.candidates);
   }
-
-  if (config.splitTickets?.enabled && discoveryResult.searches.length) {
-    const splitTargets = discoveryResult.searches.slice(
-      0,
-      Math.max(0, Number(config.splitTickets.verifyPerRun || 1))
+  const rankedExploreCandidates = rankExploreCandidates(
+    rawExploreCandidates,
+    history,
+    knownDestinations,
+    {
+      marketEvidenceMaxAgeDays:
+        config.discovery?.marketEvidenceMaxAgeDays || 30
+    }
+  );
+  const selectedExploreCandidates = selectExploreCandidates(
+    rankedExploreCandidates,
+    Number(config.discovery?.verifyCount || 3)
+  );
+  const discoveryResult = {
+    ok: !discoveryEnabled || successfulExploreLanes > 0,
+    searches: selectedExploreCandidates.map(buildExploreVerificationSearch),
+    exploredCandidates: rawExploreCandidates.length,
+    laneCount: explorePlan.lanes.length,
+    successfulLaneCount: successfulExploreLanes,
+    laneDates: explorePlan.lanes.map((lane) => (
+      lane.returnDate
+        ? `${lane.departureDate}/${lane.returnDate}`
+        : `${lane.departureDate} one-way`
+    )),
+    nextReturnCursor: successfulReturnLanes === explorePlan.lanes.filter(
+      (lane) => lane.laneType === "date-first-return"
+    ).length
+      ? explorePlan.nextReturnCursor
+      : Number(state.dateFirstReturnCursor || 0),
+    nextOneWayCursor: successfulOneWayLanes === explorePlan.lanes.filter(
+      (lane) => lane.laneType === "date-first-one-way"
+    ).length
+      ? explorePlan.nextOneWayCursor
+      : Number(state.dateFirstOneWayCursor || 0)
+  };
+  for (const search of discoveryResult.searches) {
+    const result = await trackedSearch(search, undefined, "explore-verify");
+    if (!result.ok) {
+      console.warn(result.error);
+      continue;
+    }
+    const searchCandidates = summarizeSearchOffers(
+      search,
+      result.offers,
+      history,
+      transferConfig,
+      "Date-first Google Travel Explore, verified via Google Flights"
     );
-    for (const roundTripSearch of splitTargets) {
-      const roundTripCandidate = candidates.find((candidate) => (
-        candidate.entry.origin === roundTripSearch.origin &&
-        candidate.entry.destination === roundTripSearch.destination &&
-        candidate.entry.departureDate === roundTripSearch.departureDate &&
-        candidate.entry.returnDate === roundTripSearch.returnDate &&
-        candidate.entry.itineraryProtection === "protected"
-      ));
-      if (!roundTripCandidate) continue;
-      const [outboundSearch, inboundSearch] = buildSplitTicketSearches(roundTripSearch);
-      const outboundResult = await trackedSearch(outboundSearch, undefined, "split-outbound");
-      const inboundResult = await trackedSearch(inboundSearch, undefined, "split-inbound");
-      splitTicketsChecked += 1;
-      if (!outboundResult.ok || !inboundResult.ok) {
-        if (!outboundResult.ok) console.warn(outboundResult.error);
-        if (!inboundResult.ok) console.warn(inboundResult.error);
-        continue;
-      }
-      const outboundOffer = [...outboundResult.offers]
-        .sort((a, b) => a.price - b.price)
-        .find((offer) => offer.itineraryProtection === "protected");
-      const inboundOffer = [...inboundResult.offers]
-        .sort((a, b) => a.price - b.price)
-        .find((offer) => offer.itineraryProtection === "protected");
-      if (!outboundOffer || !inboundOffer) continue;
-      splitComparisons.push({
-        origin: roundTripSearch.origin,
-        destination: roundTripSearch.destination,
-        departureDate: roundTripSearch.departureDate,
-        returnDate: roundTripSearch.returnDate,
-        currency: roundTripSearch.currencyCode,
-        splitPrice: outboundOffer.price + inboundOffer.price,
-        roundTripPrice: roundTripCandidate.entry.price
-      });
-      const splitCandidate = summarizeSplitTicketCandidate(
-        roundTripSearch,
-        outboundOffer,
-        inboundOffer,
-        roundTripCandidate,
-        history,
-        config.splitTickets
-      );
-      if (splitCandidate) {
-        candidates.push(splitCandidate);
-        newEntries.push(splitCandidate.entry);
-      }
-    }
+    candidates.push(...searchCandidates);
+    newEntries.push(...searchCandidates.map((candidate) => candidate.entry));
   }
 
   for (const search of searches) {
@@ -1595,23 +1738,121 @@ async function main() {
     newEntries.push(...searchCandidates.map((candidate) => candidate.entry));
   }
 
-  const referenceSearch = searches.find((search) => search.tripType === "round-trip") ||
+  const protectedRoundTripCandidates = candidates
+    .filter((candidate) => (
+      candidate.entry.tripType === "round-trip" &&
+      candidate.entry.itineraryProtection === "protected"
+    ))
+    .sort((left, right) => (
+      right.value.score - left.value.score ||
+      left.entry.price - right.entry.price
+    ));
+  const fallbackReferenceSearch = searches.find((search) => search.tripType === "round-trip") ||
     allSearches.find((search) => (
       search.tripType === "round-trip" &&
       Date.parse(`${search.departureDate}T00:00:00Z`) > Date.now()
     ));
-  const constructionLane = buildConstructionLane(
-    {
-      ...traveler,
-      ...(config.constructions || {}),
-      enabled: constructionsEnabled
-    },
-    state,
-    referenceSearch
-  );
+  const constructionReferences = protectedRoundTripCandidates.length
+    ? protectedRoundTripCandidates.slice(0, 5).map((candidate) => ({
+        search: candidate.search,
+        candidate
+      }))
+    : fallbackReferenceSearch
+      ? [{ search: fallbackReferenceSearch, candidate: null }]
+      : [];
+  const constructionPlans = constructionReferences.map(({ search, candidate }) => ({
+    ...buildConstructionLane(
+      {
+        ...traveler,
+        ...(config.constructions || {}),
+        splitTickets: config.splitTickets,
+        enabled: constructionsEnabled
+      },
+      state,
+      search,
+      {
+        history: [...history, ...newEntries],
+        referencePrice: candidate?.entry.price,
+        maximumEvidenceAgeDays:
+          config.constructions?.maximumEvidenceAgeDays || 45
+      }
+    ),
+    referenceSearch: search,
+    referenceCandidate: candidate
+  }));
+  const constructionLane = constructionPlans
+    .filter((plan) => plan.definition)
+    .sort((left, right) => (
+      Number(right.evidence?.score || 0) - Number(left.evidence?.score || 0)
+    ))[0] || {
+      definition: null,
+      searches: [],
+      ranking: [],
+      referenceSearch: fallbackReferenceSearch,
+      referenceCandidate: null
+    };
+  const referenceSearch = constructionLane.referenceSearch;
+  let constructionWasAttempted = false;
+  if (constructionLane.definition?.type === "split-one-ways") {
+    const [outboundSearch, inboundSearch] = constructionLane.searches;
+    const outboundResult = await trackedSearch(outboundSearch, undefined, "split-outbound");
+    const inboundResult = await trackedSearch(inboundSearch, undefined, "split-inbound");
+    constructionWasAttempted = !outboundResult.skipped || !inboundResult.skipped;
+    splitTicketsChecked += 1;
+    if (!outboundResult.ok) console.warn(outboundResult.error);
+    if (!inboundResult.ok) console.warn(inboundResult.error);
+    if (outboundResult.ok && inboundResult.ok) {
+      const outboundOffer = [...outboundResult.offers]
+        .sort((a, b) => a.price - b.price)
+        .find((offer) => offer.itineraryProtection === "protected");
+      const inboundOffer = [...inboundResult.offers]
+        .sort((a, b) => a.price - b.price)
+        .find((offer) => offer.itineraryProtection === "protected");
+      if (outboundOffer) {
+        newEntries.push(summarizeCandidate(
+          outboundSearch,
+          outboundOffer,
+          history
+        ).entry);
+      }
+      if (inboundOffer) {
+        newEntries.push(summarizeCandidate(
+          inboundSearch,
+          inboundOffer,
+          history
+        ).entry);
+      }
+      if (outboundOffer && inboundOffer && constructionLane.referenceCandidate) {
+        splitComparisons.push({
+          origin: referenceSearch.origin,
+          destination: referenceSearch.destination,
+          departureDate: referenceSearch.departureDate,
+          returnDate: referenceSearch.returnDate,
+          currency: referenceSearch.currencyCode,
+          splitPrice: outboundOffer.price + inboundOffer.price,
+          roundTripPrice: constructionLane.referenceCandidate.entry.price
+        });
+        const splitCandidate = summarizeSplitTicketCandidate(
+          referenceSearch,
+          outboundOffer,
+          inboundOffer,
+          constructionLane.referenceCandidate,
+          history,
+          config.splitTickets
+        );
+        if (splitCandidate) {
+          candidates.push(splitCandidate);
+          newEntries.push(splitCandidate.entry);
+        }
+      }
+    }
+    constructionSummary =
+      `evidence selected separate one-ways for ${referenceSearch.origin}-${referenceSearch.destination}`;
+  } else
   if (constructionLane.definition?.type === "nearby-airports") {
     const constructionSearch = constructionLane.searches[0];
     const result = await trackedSearch(constructionSearch, undefined, "construction");
+    constructionWasAttempted = !result.skipped;
     if (result.ok) {
       const searchCandidates = summarizeSearchOffers(
         constructionSearch,
@@ -1623,11 +1864,13 @@ async function main() {
       candidates.push(...searchCandidates);
       newEntries.push(...searchCandidates.map((candidate) => candidate.entry));
     }
-    constructionSummary = `checked ${constructionLane.definition.label} as a grouped nearby-airport search`;
+    constructionSummary =
+      `evidence selected ${constructionLane.definition.label} as a grouped nearby-airport search`;
   } else if (constructionLane.definition?.type === "open-jaw") {
     const [outboundSearch, inboundSearch] = constructionLane.searches;
     const outboundResult = await trackedSearch(outboundSearch, undefined, "construction");
     const inboundResult = await trackedSearch(inboundSearch, undefined, "construction");
+    constructionWasAttempted = !outboundResult.skipped || !inboundResult.skipped;
     if (outboundResult.ok && inboundResult.ok) {
       const outboundOffer = [...outboundResult.offers]
         .sort((a, b) => a.price - b.price)
@@ -1636,6 +1879,16 @@ async function main() {
         .sort((a, b) => a.price - b.price)
         .find((offer) => offer.itineraryProtection === "protected");
       if (outboundOffer && inboundOffer) {
+        newEntries.push(summarizeCandidate(
+          outboundSearch,
+          outboundOffer,
+          history
+        ).entry);
+        newEntries.push(summarizeCandidate(
+          inboundSearch,
+          inboundOffer,
+          history
+        ).entry);
         const candidate = summarizeOpenJawCandidate(
           referenceSearch,
           constructionLane.definition,
@@ -1647,7 +1900,28 @@ async function main() {
         newEntries.push(candidate.entry);
       }
     }
-    constructionSummary = `checked ${constructionLane.definition.label} as two open-jaw one-way fares; transfer cost is excluded`;
+    const surfaceTransferCost = Number(
+      constructionLane.definition.surfaceTransferCost
+    );
+    const hasKnownSurfaceTransferCost = (
+      constructionLane.definition.surfaceTransferCost !== null &&
+      constructionLane.definition.surfaceTransferCost !== undefined &&
+      constructionLane.definition.surfaceTransferCost !== "" &&
+      Number.isFinite(surfaceTransferCost) &&
+      surfaceTransferCost >= 0
+    );
+    constructionSummary = hasKnownSurfaceTransferCost
+      ? `evidence selected ${constructionLane.definition.label} as two open-jaw one-way fares; ${referenceSearch.currencyCode} ${surfaceTransferCost} surface transport is included`
+      : `evidence selected ${constructionLane.definition.label} as two open-jaw one-way fares; surface transport cost is unknown, so normal alerts are suppressed`;
+  }
+  if (constructionLane.definition && constructionWasAttempted) {
+    nextConstructionEvidence[constructionLane.definition.id] = {
+      lastSelectedAt: runId,
+      score: constructionLane.evidence?.score ?? null,
+      expectedSavings: constructionLane.evidence?.expectedSavings ?? null,
+      expectedSavingsPercent: constructionLane.evidence?.expectedSavingsPercent ?? null,
+      evidence: constructionLane.evidence?.evidence || []
+    };
   }
 
   for (const candidate of [...candidates]) {
@@ -1725,10 +1999,9 @@ async function main() {
     const effectivePrice = isKnownNumber(extraCost)
       ? candidate.offer.price + Number(extraCost)
       : candidate.offer.price;
-    const effectiveSavings = qualifiesTransferSavings(
+    const effectiveSavings = transferSavings(
       effectivePrice,
-      candidate.offer.protectedComparablePrice,
-      transferConfig
+      candidate.offer.protectedComparablePrice
     );
     const assessedOffer = {
       ...candidate.offer,
@@ -1736,7 +2009,7 @@ async function main() {
       price: effectivePrice,
       transferSavings: effectiveSavings.amount,
       transferSavingsPercent: effectiveSavings.percent,
-      transferSavingsQualifies: effectiveSavings.qualifies,
+      transferSavingsQualifies: null,
       transferAssessment: assessment,
       itineraryProtection: "self-transfer"
     };
@@ -1781,16 +2054,14 @@ async function main() {
   const dealCandidates = candidates.filter(shouldAlert);
   const alertCandidates = dealCandidates
     .filter((candidate) => isFreshAlert(candidate, alerts, cooldownHours));
-  const nextState = {
+  const proposedState = {
     ...state,
-    cursor: forceRun ? state.cursor : nextCursor,
-    constructionCursor: forceRun
-      ? Number(state.constructionCursor || 0)
-      : constructionLane.nextCursor,
+    cursor: nextCursor,
+    constructionCursor: Number(state.constructionCursor || 0),
+    constructionEvidence: nextConstructionEvidence,
     totalSearches: allSearches.length,
     checkedThisRun: searches.length,
-    discoveryMonthCursor: discoveryResult.nextMonthCursor,
-    exploredMonth: discoveryResult.exploredMonth || null,
+    ...updateDateFirstExploreState(state, discoveryResult, false),
     exploredCandidates: discoveryResult.exploredCandidates || 0,
     flexibleDealsChecked: discoveryResult.ok ? discoveryResult.searches.length : 0,
     splitTicketsChecked,
@@ -1805,28 +2076,32 @@ async function main() {
     promotions: promotionResult.state,
     promotionErrors: promotionResult.errors,
     lastRunAt: runId,
-    lastCompletedAt: forceRun ? state.lastCompletedAt : runId,
+    lastCompletedAt: runId,
     alerts
   };
+  const completion = evaluateRunCompletion({
+    accountAvailable: accountBeforeResult.ok &&
+      quota.spendableThisRun !== null,
+    forceRun,
+    providerStats
+  });
+  const nextState = finalizeWorkerState(state, proposedState, {
+    completion,
+    forceRun
+  });
 
-  if (
-    providerStats.successful === 0 &&
-    (providerStats.attempted > 0 || providerStats.skipped > 0)
-  ) {
+  if (!completion.complete) {
     const message = [
       "Flight Tracker check incomplete",
       "",
-      providerStats.attempted
-        ? `All ${providerStats.attempted} Google Flights requests failed.`
-        : "No fare request could run without breaching the configured quota reserve.",
+      completion.reason,
       "No no-deal conclusion was recorded and the tracker will retry on its next workflow wake-up.",
       ...providerStats.errors.slice(0, 3).map((error) => `Error: ${error}`)
     ].join("\n");
     console.error(message);
-    nextState.lastCompletedAt = state.lastCompletedAt;
     writeJson(STATE_PATH, nextState);
     await deliverNotifications(message);
-    throw new Error("All Google Flights provider requests failed.");
+    throw new Error(completion.reason);
   }
 
   writeJson(STATE_PATH, nextState);
@@ -1843,7 +2118,7 @@ async function main() {
     writeJson(STATE_PATH, { ...nextState, alerts });
   } else {
     const discoveryNote = discoveryResult.searches.length
-      ? ", including flexible discovery"
+      ? ", including date-first discovery"
       : "";
     console.log(`Checked ${candidates.length} live fare candidates${discoveryNote}. No new relative deals found.`);
     if (config.notifyOnNoDeals !== false) {
@@ -1880,16 +2155,21 @@ if (require.main === module) {
 
 module.exports = {
   alertKey,
+  buildExploreVerificationSearch,
   buildSearches,
   buildSplitTicketSearches,
   combineRoundTripOffers,
+  evaluateRunCompletion,
   explainNoDeal,
+  finalizeWorkerState,
   formatAlert,
   formatNoDealSummary,
   formatHistoryAnalysis,
   isFareDeal,
   main,
   mapSerpApiOffer,
+  searchGoogleTravelExploreLane,
+  selectCandidateOffers,
   selectSearches,
   shouldAlert,
   summarizeCandidate,

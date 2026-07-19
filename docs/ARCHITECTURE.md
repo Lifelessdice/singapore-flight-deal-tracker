@@ -14,17 +14,19 @@ not scrape either site.
 
 ## Search lanes
 
-- `explore`: one rotating month for destination discovery.
-- `explore-verify`: exact Google Flights checks for selected Explore results.
-- `split-outbound` / `split-inbound`: compare a normal return with two one ways.
+- `date-first-return`: one Explore call for a configured departure/return pair.
+- `date-first-one-way`: one Explore call for a configured departure date.
+- `explore-verify`: exact Google Flights checks for relatively ranked Explore results.
 - `exact`: prioritized configured route/date searches.
-- `construction`: one rotating nearby-airport group or two-leg open jaw.
+- `split-outbound` / `split-inbound`: the evidence-selected split construction.
+- `construction`: an evidence-selected nearby-airport group or two-leg open jaw.
 - `return-verify`: follow Google's departure token before a normal return alerts.
 
 All billable lanes pass through one call guard. The production maximum is 14
 attempts per completed cycle and a provider-account reserve of 10 searches is
-protected. The normal allocation reserves two calls for construction and one for
-return verification, reducing routine exact work from eight slots to five.
+protected. The normal allocation is two Explore calls, three Explore
+verifications, six routine exact calls, up to two alternative-construction calls,
+and one return verification.
 
 ## Candidate decisions
 
@@ -39,6 +41,14 @@ overnights, separate tickets, open-jaw transfers, one-way incompleteness, and
 unconfirmed baggage. This score ranks usability; it does not make a non-relative
 price into a deal.
 
+The documented Explore destination schema supplies fare, dates, duration, stops,
+and airline, but not a Google typical-price range. Pre-verification ranking reuses
+the newest external price insight only from matched exact-search history. Results
+without a local or external relative baseline are explicitly exploration-only;
+one-way and unfamiliar exploration slots are still preserved so the worker can
+build evidence for new routes. Reused external market evidence expires after 30
+days by default.
+
 `transit-policy.js` is independent from fare scoring. Its provider interface
 returns `known` or explicit `unknown` policy evidence. The manual provider,
 cache/staleness logic, connection-time checks, extra-cost accounting, and final
@@ -48,11 +58,20 @@ qualification.
 
 ## Alternative constructions
 
+The alternative selector scores split tickets, nearby-airport groups, and open
+jaws before spending construction calls. Evidence includes recent reverse
+one-way prices, comparable protected history, previous grouped results, expected
+savings, freshness, and call efficiency. This replaces the previous round-robin
+construction cursor and the independent automatic split pass.
+
 Nearby-airport searches send comma-separated Google Flights airport groups, such
 as `BKK,DMK`, and store the actual endpoint returned by the itinerary. Open jaws
 price two independent one-way flights, such as `SIN-KUL` and `PEN-SIN`.
-Surface transport is not included, so open-jaw notifications disclose that cost
-and must not be interpreted as total-trip cost.
+Construction evidence must match exact departure/return dates, airport group,
+currency, cabin, passenger count, and baggage profile. A configured open-jaw
+surface-transfer estimate is
+included in expected and effective price. If that cost is unknown, expected
+savings remain unknown and the candidate cannot send a normal deal alert.
 
 JHB positioning is intentionally excluded. Singapore-Malaysia border time and
 ground cost need a dedicated model before those fares can be compared honestly.
@@ -61,9 +80,9 @@ ground cost need a dedicated model before those fares can be compared honestly.
 
 `data/worker-state.json` contains:
 
-- queue and construction cursors;
+- exact-search and independent date-first return/one-way cursors;
 - alert cooldowns;
-- Explore rotation and split/construction summaries;
+- construction evidence, split comparisons, and selected-plan summaries;
 - per-run provider counts by request kind;
 - SerpApi before/after quota snapshots and provider usage delta;
 - exact-search coverage attempts, successes, offers, and errors;
@@ -80,6 +99,11 @@ inferred from fares.
 State is persisted before Discord delivery. Therefore notification failure cannot
 erase credits already spent. Alert cooldowns are persisted only after Discord
 accepts the alert, allowing a failed alert to retry.
+
+The opening Account API snapshot is mandatory for fare spending. An unavailable
+or incomplete balance fails closed at zero calls. Quota-truncated scheduled runs
+persist diagnostics and spent-work coverage but preserve exact/date cursors and
+`lastCompletedAt`.
 
 Promotion changes must produce the same new relevant-content fingerprint on two
 consecutive checks before Discord is notified. This filters dynamic page chrome
