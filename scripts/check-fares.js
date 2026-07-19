@@ -1235,13 +1235,25 @@ function formatNoDealSummary(candidates, options = {}) {
   const discoveryResult = options.discoveryResult || {};
   const dealCandidates = options.dealCandidates || [];
   const checkIntervalHours = Number(options.checkIntervalHours || 48);
+  const manualProbe = Boolean(options.forceRun);
+  const rawExploreOptions = Number(discoveryResult.exploredCandidates || 0);
+  const unverifiedManualDiscovery = (
+    manualProbe &&
+    rawExploreOptions > 0 &&
+    candidates.length === 0 &&
+    Number(options.providerStats?.skipped || 0) > 0
+  );
   const lines = [
-    "Flight Tracker check complete",
+    manualProbe
+      ? "Flight Tracker manual probe complete"
+      : "Flight Tracker check complete",
     "",
-    dealCandidates.length
+    unverifiedManualDiscovery
+      ? `Smoke test succeeded: Explore found ${rawExploreOptions} raw option${rawExploreOptions === 1 ? "" : "s"}, but the manual call cap intentionally left exact verification for a full cycle. This probe did not make a deal/no-deal decision.`
+      : dealCandidates.length
       ? `${dealCandidates.length} relative deal${dealCandidates.length === 1 ? "" : "s"} still qualified, but the alert cooldown prevented a duplicate deal alert.`
       : "No new relative deals matched the alert criteria.",
-    `Checked ${candidates.length} live fare candidate${candidates.length === 1 ? "" : "s"}.`
+    `Checked ${candidates.length} exactly verified fare candidate${candidates.length === 1 ? "" : "s"}.`
   ];
 
   if (discoveryResult.laneCount) {
@@ -1272,6 +1284,11 @@ function formatNoDealSummary(candidates, options = {}) {
     lines.push(
       `Search usage: ${options.providerStats.attempted} attempted, ${options.providerStats.successful} succeeded, ${options.providerStats.skipped || 0} skipped; ${remaining}.`
     );
+    if (manualProbe && options.providerStats.skipped) {
+      lines.push(
+        "Skipped follow-up searches are expected under this manual probe's total-call cap."
+      );
+    }
   }
   if (options.coverage) {
     lines.push(
@@ -1351,13 +1368,20 @@ function formatNoDealSummary(candidates, options = {}) {
       }
     });
   } else {
-    lines.push(
-      "",
-      "No live candidates were returned. Review the GitHub Actions log for API or route errors."
-    );
+    const emptyReason = rawExploreOptions > 0
+      ? "Explore returned raw options, but none received an exact Google Flights verification in this run."
+      : Number(options.providerStats?.successful || 0) > 0
+        ? "Provider requests completed successfully but returned no exactly verified fare candidates for the selected searches."
+        : "No live candidates were returned. Review the GitHub Actions log for API or route errors.";
+    lines.push("", emptyReason);
   }
 
-  lines.push("", `The next completed automatic check is due in about ${checkIntervalHours} hours.`);
+  lines.push(
+    "",
+    manualProbe
+      ? "This manual probe did not change the scheduled 48-hour cadence."
+      : `The next completed automatic check is due in about ${checkIntervalHours} hours.`
+  );
   return lines.join("\n");
 }
 
@@ -2134,7 +2158,8 @@ async function main() {
         coverage,
         constructionSummary,
         promotionResult,
-        checkIntervalHours
+        checkIntervalHours,
+        forceRun
       });
       console.log(summary);
       await deliverNotifications(summary);

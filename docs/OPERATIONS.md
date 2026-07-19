@@ -26,6 +26,9 @@ Manual runs update usage and coverage but do not postpone the next scheduled
 cycle or advance the production date-lane cursors. The manual `max_searches`
 input caps both the selected exact queue and the total provider attempts, so a
 one-search discovery smoke test spends at most one credit.
+Its Discord message separates raw Explore options from exactly verified fares and
+states that cap-driven skipped follow-ups are expected; it does not report a
+deal/no-deal conclusion from unverified discovery results.
 
 ## Commands
 

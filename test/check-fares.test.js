@@ -91,6 +91,29 @@ const emptyDiscoveryLane = formatNoDealSummary([], {
   }
 });
 assert.match(emptyDiscoveryLane, /reviewed 0 options across 1\/1 configured date lane/);
+const manualDiscoveryProbe = formatNoDealSummary([], {
+  discoveryResult: {
+    exploredCandidates: 4,
+    laneCount: 2,
+    successfulLaneCount: 1
+  },
+  providerStats: {
+    attempted: 1,
+    successful: 1,
+    failed: 0,
+    skipped: 5
+  },
+  quota: { remaining: 192 },
+  forceRun: true
+});
+assert.match(manualDiscoveryProbe, /manual probe complete/);
+assert.match(manualDiscoveryProbe, /Smoke test succeeded: Explore found 4 raw options/);
+assert.match(manualDiscoveryProbe, /did not make a deal\/no-deal decision/);
+assert.match(manualDiscoveryProbe, /Checked 0 exactly verified fare candidates/);
+assert.match(manualDiscoveryProbe, /Skipped follow-up searches are expected/);
+assert.match(manualDiscoveryProbe, /did not change the scheduled 48-hour cadence/);
+assert.doesNotMatch(manualDiscoveryProbe, /No new relative deals matched/);
+assert.doesNotMatch(manualDiscoveryProbe, /API or route errors/);
 
 const discordSized = formatNoDealSummary([candidate, candidate, candidate], {
   discoveryResult: {
