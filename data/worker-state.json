@@ -4,8 +4,8 @@
   "checkedThisRun": 1,
   "discoveryMonthCursor": 2,
   "exploredMonth": null,
-  "exploredCandidates": 0,
-  "flexibleDealsChecked": 0,
+  "exploredCandidates": 4,
+  "flexibleDealsChecked": 3,
   "splitTicketsChecked": 0,
   "splitComparisons": [],
   "returnVerificationsAttempted": 0,
@@ -14,9 +14,9 @@
     "attempted": 1,
     "successful": 1,
     "failed": 0,
-    "skipped": 0,
+    "skipped": 5,
     "byKind": {
-      "exact": {
+      "date-first-return": {
         "attempted": 1,
         "successful": 1,
         "failed": 0
@@ -31,21 +31,21 @@
   "quota": {
     "planName": "Free Plan",
     "monthlyLimit": 250,
-    "usedThisMonth": 57,
-    "remaining": 193,
+    "usedThisMonth": 58,
+    "remaining": 192,
     "reserveSearches": 10,
-    "spendableThisRun": 183,
+    "spendableThisRun": 182,
     "renewalDate": "2026-08-12",
     "after": {
       "planName": "Free Plan",
       "monthlyLimit": 250,
-      "usedThisMonth": 57,
-      "remaining": 193,
+      "usedThisMonth": 59,
+      "remaining": 191,
       "reserveSearches": 10,
-      "spendableThisRun": 183,
+      "spendableThisRun": 181,
       "renewalDate": "2026-08-12"
     },
-    "providerUsageDelta": 0
+    "providerUsageDelta": 1
   },
   "coverage": {
     "eligibleSearches": 392,
@@ -135,19 +135,26 @@
   "promotions": {
     "airasia-sg": {
       "fingerprint": "269bf236adc9fa6749ee17e01d86fb241add32dce05243d7f73c228bc09cb3b7",
-      "checkedAt": "2026-07-18T17:11:38.933Z",
+      "checkedAt": "2026-07-19T14:51:06.534Z",
       "url": "https://www.airasia.com/promotions/sg/",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     },
     "scoot-deals": {
       "fingerprint": "a114aa5acd8e4921fffe294a3f96f17d5c99c7704d597a5ca5c76ecff9776a40",
-      "checkedAt": "2026-07-18T17:11:39.866Z",
+      "checkedAt": "2026-07-19T14:51:07.551Z",
       "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     }
   },
   "promotionErrors": [],
-  "lastRunAt": "2026-07-18T17:11:36.530Z"
+  "lastRunAt": "2026-07-19T14:51:03.855Z",
+  "constructionEvidence": {},
+  "dateFirstReturnCursor": 0,
+  "dateFirstOneWayCursor": 0,
+  "dateFirstLaneDates": [
+    "2026-08-07/2026-08-10",
+    "2026-08-07 one-way"
+  ]
 }
