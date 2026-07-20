@@ -1,22 +1,57 @@
 {
-  "cursor": 28,
+  "cursor": 34,
   "totalSearches": 644,
-  "checkedThisRun": 1,
+  "checkedThisRun": 6,
   "discoveryMonthCursor": 2,
   "exploredMonth": null,
-  "exploredCandidates": 4,
+  "exploredCandidates": 34,
   "flexibleDealsChecked": 3,
-  "splitTicketsChecked": 0,
-  "splitComparisons": [],
+  "splitTicketsChecked": 1,
+  "splitComparisons": [
+    {
+      "origin": "SIN",
+      "destination": "PEN",
+      "departureDate": "2026-08-21",
+      "returnDate": "2026-08-24",
+      "currency": "USD",
+      "splitPrice": 143,
+      "roundTripPrice": 131
+    }
+  ],
   "returnVerificationsAttempted": 0,
   "returnVerificationsPassed": 0,
   "providerStats": {
-    "attempted": 1,
-    "successful": 1,
+    "attempted": 13,
+    "successful": 13,
     "failed": 0,
-    "skipped": 5,
+    "skipped": 0,
     "byKind": {
       "date-first-return": {
+        "attempted": 1,
+        "successful": 1,
+        "failed": 0
+      },
+      "date-first-one-way": {
+        "attempted": 1,
+        "successful": 1,
+        "failed": 0
+      },
+      "explore-verify": {
+        "attempted": 3,
+        "successful": 3,
+        "failed": 0
+      },
+      "exact": {
+        "attempted": 6,
+        "successful": 6,
+        "failed": 0
+      },
+      "split-outbound": {
+        "attempted": 1,
+        "successful": 1,
+        "failed": 0
+      },
+      "split-inbound": {
         "attempted": 1,
         "successful": 1,
         "failed": 0
@@ -24,10 +59,10 @@
     },
     "errors": []
   },
-  "lastCompletedAt": "2026-07-18T07:47:14.079Z",
+  "lastCompletedAt": "2026-07-20T09:32:27.473Z",
   "alerts": {},
   "constructionCursor": 0,
-  "constructionSummary": "",
+  "constructionSummary": "evidence selected separate one-ways for SIN-PEN",
   "quota": {
     "planName": "Free Plan",
     "monthlyLimit": 250,
@@ -39,23 +74,22 @@
     "after": {
       "planName": "Free Plan",
       "monthlyLimit": 250,
-      "usedThisMonth": 71,
-      "remaining": 179,
+      "usedThisMonth": 82,
+      "remaining": 168,
       "reserveSearches": 10,
-      "spendableThisRun": 169,
+      "spendableThisRun": 158,
       "renewalDate": "2026-08-12"
     },
-    "providerUsageDelta": 0
+    "providerUsageDelta": 11
   },
   "coverage": {
     "eligibleSearches": 392,
-    "recentlyCoveredSearches": 10,
-    "recentlySuccessfulSearches": 10,
-    "coveragePercent": 3,
+    "recentlyCoveredSearches": 16,
+    "recentlySuccessfulSearches": 16,
+    "coveragePercent": 4,
     "destinationCount": 14,
     "staleDestinations": [
       "KUL",
-      "PEN",
       "BKK",
       "DMK",
       "CNX",
@@ -138,11 +172,11 @@
       "tripType": "round-trip",
       "searchStrategy": "standard",
       "kind": "explore-verify",
-      "lastAttemptAt": "2026-07-20T07:01:37.352Z",
-      "lastSuccessAt": "2026-07-20T07:01:37.352Z",
-      "lastOfferAt": "2026-07-20T07:01:37.352Z",
+      "lastAttemptAt": "2026-07-20T09:32:47.858Z",
+      "lastSuccessAt": "2026-07-20T09:32:47.858Z",
+      "lastOfferAt": "2026-07-20T09:32:47.858Z",
       "lastError": null,
-      "runId": "2026-07-20T07:01:30.014Z"
+      "runId": "2026-07-20T09:32:27.473Z"
     },
     "explore-verify|explore-SIN-KUL|SIN|KUL|2026-08-07||one-way|standard|ECONOMY|1|0|0": {
       "routeId": "explore-SIN-KUL",
@@ -153,11 +187,11 @@
       "tripType": "one-way",
       "searchStrategy": "standard",
       "kind": "explore-verify",
-      "lastAttemptAt": "2026-07-20T07:01:38.947Z",
-      "lastSuccessAt": "2026-07-20T07:01:38.947Z",
-      "lastOfferAt": "2026-07-20T07:01:38.947Z",
+      "lastAttemptAt": "2026-07-20T09:32:51.772Z",
+      "lastSuccessAt": "2026-07-20T09:32:51.772Z",
+      "lastOfferAt": "2026-07-20T09:32:51.772Z",
       "lastError": null,
-      "runId": "2026-07-20T07:01:30.014Z"
+      "runId": "2026-07-20T09:32:27.473Z"
     },
     "explore-verify|explore-SIN-KTI|SIN|KTI|2026-08-07||one-way|standard|ECONOMY|1|0|0": {
       "routeId": "explore-SIN-KTI",
@@ -278,29 +312,172 @@
       "lastOfferAt": "2026-07-20T07:02:15.245Z",
       "lastError": null,
       "runId": "2026-07-20T07:01:30.014Z"
+    },
+    "explore-verify|explore-SIN-PQC|SIN|PQC|2026-08-07||one-way|standard|ECONOMY|1|0|0": {
+      "routeId": "explore-SIN-PQC",
+      "origin": "SIN",
+      "destination": "PQC",
+      "departureDate": "2026-08-07",
+      "returnDate": "",
+      "tripType": "one-way",
+      "searchStrategy": "standard",
+      "kind": "explore-verify",
+      "lastAttemptAt": "2026-07-20T09:32:52.850Z",
+      "lastSuccessAt": "2026-07-20T09:32:52.850Z",
+      "lastOfferAt": "2026-07-20T09:32:52.850Z",
+      "lastError": null,
+      "runId": "2026-07-20T09:32:27.473Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|PEN|2026-08-11|2026-08-13|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "PEN",
+      "departureDate": "2026-08-11",
+      "returnDate": "2026-08-13",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-07-20T09:32:57.575Z",
+      "lastSuccessAt": "2026-07-20T09:32:57.575Z",
+      "lastOfferAt": "2026-07-20T09:32:57.575Z",
+      "lastError": null,
+      "runId": "2026-07-20T09:32:27.473Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|PEN|2026-08-14|2026-08-17|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "PEN",
+      "departureDate": "2026-08-14",
+      "returnDate": "2026-08-17",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-07-20T09:33:05.322Z",
+      "lastSuccessAt": "2026-07-20T09:33:05.322Z",
+      "lastOfferAt": "2026-07-20T09:33:05.322Z",
+      "lastError": null,
+      "runId": "2026-07-20T09:32:27.473Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|PEN|2026-08-21|2026-08-24|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "PEN",
+      "departureDate": "2026-08-21",
+      "returnDate": "2026-08-24",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-07-20T09:33:16.359Z",
+      "lastSuccessAt": "2026-07-20T09:33:16.359Z",
+      "lastOfferAt": "2026-07-20T09:33:16.359Z",
+      "lastError": null,
+      "runId": "2026-07-20T09:32:27.473Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|PEN|2026-08-25|2026-08-27|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "PEN",
+      "departureDate": "2026-08-25",
+      "returnDate": "2026-08-27",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-07-20T09:33:19.360Z",
+      "lastSuccessAt": "2026-07-20T09:33:19.360Z",
+      "lastOfferAt": "2026-07-20T09:33:19.360Z",
+      "lastError": null,
+      "runId": "2026-07-20T09:32:27.473Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|PEN|2026-09-04|2026-09-07|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "PEN",
+      "departureDate": "2026-09-04",
+      "returnDate": "2026-09-07",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-07-20T09:33:27.347Z",
+      "lastSuccessAt": "2026-07-20T09:33:27.347Z",
+      "lastOfferAt": "2026-07-20T09:33:27.347Z",
+      "lastError": null,
+      "runId": "2026-07-20T09:32:27.473Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|TPE|2026-08-07||one-way|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "TPE",
+      "departureDate": "2026-08-07",
+      "returnDate": "",
+      "tripType": "one-way",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-07-20T09:33:30.453Z",
+      "lastSuccessAt": "2026-07-20T09:33:30.453Z",
+      "lastOfferAt": "2026-07-20T09:33:30.453Z",
+      "lastError": null,
+      "runId": "2026-07-20T09:32:27.473Z"
+    },
+    "split-outbound|split-SIN-PEN-outbound|SIN|PEN|2026-08-21||one-way|split-outbound|ECONOMY|1|0|0": {
+      "routeId": "split-SIN-PEN-outbound",
+      "origin": "SIN",
+      "destination": "PEN",
+      "departureDate": "2026-08-21",
+      "returnDate": "",
+      "tripType": "one-way",
+      "searchStrategy": "split-outbound",
+      "kind": "split-outbound",
+      "lastAttemptAt": "2026-07-20T09:33:32.658Z",
+      "lastSuccessAt": "2026-07-20T09:33:32.658Z",
+      "lastOfferAt": "2026-07-20T09:33:32.658Z",
+      "lastError": null,
+      "runId": "2026-07-20T09:32:27.473Z"
+    },
+    "split-inbound|split-SIN-PEN-inbound|PEN|SIN|2026-08-24||one-way|split-inbound|ECONOMY|1|0|0": {
+      "routeId": "split-SIN-PEN-inbound",
+      "origin": "PEN",
+      "destination": "SIN",
+      "departureDate": "2026-08-24",
+      "returnDate": "",
+      "tripType": "one-way",
+      "searchStrategy": "split-inbound",
+      "kind": "split-inbound",
+      "lastAttemptAt": "2026-07-20T09:33:34.482Z",
+      "lastSuccessAt": "2026-07-20T09:33:34.482Z",
+      "lastOfferAt": "2026-07-20T09:33:34.482Z",
+      "lastError": null,
+      "runId": "2026-07-20T09:32:27.473Z"
     }
   },
   "promotions": {
     "airasia-sg": {
       "fingerprint": "269bf236adc9fa6749ee17e01d86fb241add32dce05243d7f73c228bc09cb3b7",
-      "checkedAt": "2026-07-20T07:28:55.127Z",
+      "checkedAt": "2026-07-20T09:33:34.988Z",
       "url": "https://www.airasia.com/promotions/sg/",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     },
     "scoot-deals": {
       "fingerprint": "a114aa5acd8e4921fffe294a3f96f17d5c99c7704d597a5ca5c76ecff9776a40",
-      "checkedAt": "2026-07-20T07:28:55.932Z",
+      "checkedAt": "2026-07-20T09:33:35.737Z",
       "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     }
   },
   "promotionErrors": [],
-  "lastRunAt": "2026-07-20T07:28:54.166Z",
-  "constructionEvidence": {},
-  "dateFirstReturnCursor": 0,
-  "dateFirstOneWayCursor": 0,
+  "lastRunAt": "2026-07-20T09:32:27.473Z",
+  "constructionEvidence": {
+    "split-SIN-PEN": {
+      "lastSelectedAt": "2026-07-20T09:32:27.473Z",
+      "score": 20,
+      "expectedSavings": null,
+      "expectedSavingsPercent": null,
+      "evidence": []
+    }
+  },
+  "dateFirstReturnCursor": 1,
+  "dateFirstOneWayCursor": 1,
   "dateFirstLaneDates": [
     "2026-08-07/2026-08-10",
     "2026-08-07 one-way"
