@@ -1326,8 +1326,8 @@ function formatNoDealSummary(candidates, options = {}) {
   if (exploreLeads.length) {
     lines.push(
       "",
-      "Top Explore leads (indicative, not exactly verified):",
-      "These are ranked discovery leads, not deal alerts. Open Google Flights to confirm the current itinerary and price."
+      "Top Explore leads:",
+      "The Explore price is indicative. Each lead shows whether an exact Google Flights follow-up ran; only the separate deal analysis can promote it to an alert."
     );
     exploreLeads.forEach((search, index) => {
       const dates = `${formatTravelDate(search.departureDate)}${search.returnDate ? ` to ${formatTravelDate(search.returnDate)}` : ""}`;
@@ -1345,12 +1345,30 @@ function formatNoDealSummary(candidates, options = {}) {
         ? ` | ${search.discoveryAirline}`
         : "";
       lines.push(
-        `${index + 1}. ${search.origin} -> ${search.destination} (${search.destinationName || search.destination}) | ${dates} | indicative ${search.currencyCode} ${search.discoveryPrice} | ${stopSummary} | ${durationSummary}${airline}`
+        `${index + 1}. ${search.origin} -> ${search.destination} (${search.destinationName || search.destination}) | ${dates} | Explore estimate ${search.currencyCode} ${search.discoveryPrice} | ${stopSummary} | ${durationSummary}${airline}`
       );
       if (search.discoveryEvidence?.reasons?.length) {
         lines.push(`Why it ranked: ${search.discoveryEvidence.reasons.join("; ")}.`);
       }
-      lines.push(`Check exact flights: ${getGoogleFlightsSearchUrl(search)}`);
+      const exactFollowUp = search.exactFollowUp || {};
+      if (exactFollowUp.status === "priced") {
+        lines.push(
+          `Exact Google follow-up: ${exactFollowUp.candidateCount} eligible option${exactFollowUp.candidateCount === 1 ? "" : "s"}; cheapest observed ${exactFollowUp.currencyCode} ${exactFollowUp.price}. This is not a deal unless the analysis below says so.`
+        );
+      } else if (exactFollowUp.status === "no-eligible-offers") {
+        lines.push(
+          "Exact Google follow-up: completed, but no option passed the configured stop and duration filters."
+        );
+      } else if (exactFollowUp.status === "failed") {
+        lines.push(`Exact Google follow-up failed: ${exactFollowUp.error}`);
+      } else {
+        lines.push(
+          `Exact Google follow-up: not run${exactFollowUp.error ? `; ${exactFollowUp.error}` : " in this cycle"}.`
+        );
+      }
+      lines.push(
+        `Open exact Google search: ${exactFollowUp.googleFlightsUrl || getGoogleFlightsSearchUrl(search)}`
+      );
       if (search.exploreUrl) {
         lines.push(`Open original Explore result: ${search.exploreUrl}`);
       }
@@ -1784,6 +1802,14 @@ async function main() {
   for (const search of discoveryResult.searches) {
     const result = await trackedSearch(search, undefined, "explore-verify");
     if (!result.ok) {
+      search.exactFollowUp = {
+        status: result.skipped ? "not-run" : "failed",
+        candidateCount: 0,
+        price: null,
+        currencyCode: search.currencyCode,
+        googleFlightsUrl: getGoogleFlightsSearchUrl(search),
+        error: result.error
+      };
       console.warn(result.error);
       continue;
     }
@@ -1794,6 +1820,18 @@ async function main() {
       transferConfig,
       "Date-first Google Travel Explore, verified via Google Flights"
     );
+    const cheapestExactCandidate = [...searchCandidates]
+      .sort((left, right) => left.entry.price - right.entry.price)[0];
+    search.exactFollowUp = {
+      status: cheapestExactCandidate ? "priced" : "no-eligible-offers",
+      candidateCount: searchCandidates.length,
+      price: cheapestExactCandidate?.entry.price ?? null,
+      currencyCode: cheapestExactCandidate?.entry.currency || search.currencyCode,
+      googleFlightsUrl: cheapestExactCandidate?.links.googleFlights ||
+        result.googleFlightsUrl ||
+        getGoogleFlightsSearchUrl(search),
+      error: null
+    };
     candidates.push(...searchCandidates);
     newEntries.push(...searchCandidates.map((candidate) => candidate.entry));
   }

@@ -116,6 +116,14 @@ const manualDiscoveryProbe = formatNoDealSummary([], {
           "80 minutes"
         ]
       },
+      exactFollowUp: {
+        status: "not-run",
+        candidateCount: 0,
+        price: null,
+        currencyCode: "USD",
+        googleFlightsUrl: "https://www.google.com/travel/flights?q=exact-pen",
+        error: "Search skipped under the one-call manual cap."
+      },
       exploreUrl: "https://www.google.com/travel/explore?lead=pen"
     }]
   },
@@ -134,17 +142,62 @@ assert.match(manualDiscoveryProbe, /did not make a deal\/no-deal decision/);
 assert.match(manualDiscoveryProbe, /Checked 0 exactly verified fare candidates/);
 assert.match(manualDiscoveryProbe, /Skipped follow-up searches are expected/);
 assert.match(manualDiscoveryProbe, /did not change the scheduled 48-hour cadence/);
-assert.match(manualDiscoveryProbe, /Top Explore leads \(indicative, not exactly verified\)/);
+assert.match(manualDiscoveryProbe, /Top Explore leads:/);
 assert.match(manualDiscoveryProbe, /SIN -> PEN \(Penang\)/);
-assert.match(manualDiscoveryProbe, /indicative USD 45 \| nonstop \| 1h 20m \| AirAsia/);
+assert.match(manualDiscoveryProbe, /Explore estimate USD 45 \| nonstop \| 1h 20m \| AirAsia/);
 assert.match(manualDiscoveryProbe, /Why it ranked: 31% below matched history/);
 assert.match(
   manualDiscoveryProbe,
-  /Check exact flights: https:\/\/www\.google\.com\/travel\/flights\?q=SIN%20to%20PEN%202026-09-08/
+  /Exact Google follow-up: not run; Search skipped under the one-call manual cap/
+);
+assert.match(
+  manualDiscoveryProbe,
+  /Open exact Google search: https:\/\/www\.google\.com\/travel\/flights\?q=exact-pen/
 );
 assert.match(manualDiscoveryProbe, /Open original Explore result/);
 assert.doesNotMatch(manualDiscoveryProbe, /No new relative deals matched/);
 assert.doesNotMatch(manualDiscoveryProbe, /API or route errors/);
+
+const pricedDiscoveryLead = formatNoDealSummary([], {
+  discoveryResult: {
+    exploredCandidates: 1,
+    laneCount: 1,
+    successfulLaneCount: 1,
+    searches: [{
+      origin: "SIN",
+      destination: "PEN",
+      destinationName: "Penang",
+      departureDate: "2026-09-08",
+      returnDate: "",
+      currencyCode: "USD",
+      discoveryPrice: 45,
+      discoveryTotalDurationMinutes: 80,
+      discoveryStops: 0,
+      exactFollowUp: {
+        status: "priced",
+        candidateCount: 2,
+        price: 48,
+        currencyCode: "USD",
+        googleFlightsUrl: "https://www.google.com/travel/flights?selected=pen",
+        error: null
+      }
+    }]
+  },
+  providerStats: {
+    attempted: 2,
+    successful: 2,
+    failed: 0,
+    skipped: 0
+  }
+});
+assert.match(
+  pricedDiscoveryLead,
+  /Exact Google follow-up: 2 eligible options; cheapest observed USD 48/
+);
+assert.match(
+  pricedDiscoveryLead,
+  /Open exact Google search: https:\/\/www\.google\.com\/travel\/flights\?selected=pen/
+);
 
 const discordSized = formatNoDealSummary([candidate, candidate, candidate], {
   discoveryResult: {
