@@ -58,8 +58,9 @@ When nothing qualifies, the heartbeat reports the cheapest fares observed,
 why they did not trigger, search coverage, provider health, quota use, and any
 self-transfers requiring manual review. It also lists up to three top-ranked
 Explore leads with their indicative price, duration, stops, ranking evidence,
-and a one-click exact route/date search. Explore leads are clearly separated
-from exactly verified fares because their displayed price can change.
+and a one-click exact route/date search. Each lead says whether its exact
+follow-up ran and reports the exact observed price when it did. Explore estimates
+remain clearly separated because their displayed price can change.
 
 ## How it works
 

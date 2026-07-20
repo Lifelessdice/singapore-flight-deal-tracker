@@ -87,9 +87,10 @@ available, including exploration-only options.
 Every completed heartbeat can show those selected Explore leads even when the
 shared call cap prevents exact follow-up. Each lead includes its indicative
 price and itinerary facts, ranking reasons, the original Explore page when
-available, and a newly generated exact route/date Google Flights search. These
-are discovery actions, not deal alerts, until exact pricing and the normal deal
-tests succeed.
+available, and the exact follow-up status. A successful follow-up reports the
+cheapest exact observed price and links to Google's selected results; otherwise
+the message explains why it did not run. These are discovery actions, not deal
+alerts, until the normal deal tests succeed.
 
 SerpApi's first round-trip response describes the outbound selection. Before a
 round-trip price signal can alert, the worker follows its `departure_token` and

@@ -31,8 +31,9 @@ smoke test still spends at most one credit.
 Its Discord message separates raw Explore options from exactly verified fares and
 states that cap-driven skipped follow-ups are expected. Selected raw leads include
 indicative itinerary details, ranking reasons, and exact route/date Google
-Flights links, but the worker does not report a deal/no-deal conclusion from
-unverified discovery results.
+Flights links. Per-lead status distinguishes a priced exact follow-up, no eligible
+exact options, a quota skip, and a provider failure. The worker does not report a
+deal/no-deal conclusion from unverified discovery results.
 
 ## Commands
 

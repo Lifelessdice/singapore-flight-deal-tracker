@@ -1351,6 +1351,8 @@ function formatNoDealSummary(candidates, options = {}) {
         lines.push(`Why it ranked: ${search.discoveryEvidence.reasons.join("; ")}.`);
       }
       const exactFollowUp = search.exactFollowUp || {};
+      const exactFollowUpError = String(exactFollowUp.error || "")
+        .replace(/[.\s]+$/, "");
       if (exactFollowUp.status === "priced") {
         lines.push(
           `Exact Google follow-up: ${exactFollowUp.candidateCount} eligible option${exactFollowUp.candidateCount === 1 ? "" : "s"}; cheapest observed ${exactFollowUp.currencyCode} ${exactFollowUp.price}. This is not a deal unless the analysis below says so.`
@@ -1360,10 +1362,10 @@ function formatNoDealSummary(candidates, options = {}) {
           "Exact Google follow-up: completed, but no option passed the configured stop and duration filters."
         );
       } else if (exactFollowUp.status === "failed") {
-        lines.push(`Exact Google follow-up failed: ${exactFollowUp.error}`);
+        lines.push(`Exact Google follow-up failed: ${exactFollowUpError}.`);
       } else {
         lines.push(
-          `Exact Google follow-up: not run${exactFollowUp.error ? `; ${exactFollowUp.error}` : " in this cycle"}.`
+          `Exact Google follow-up: not run${exactFollowUpError ? `; ${exactFollowUpError}` : " in this cycle"}.`
         );
       }
       lines.push(

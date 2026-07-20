@@ -150,6 +150,7 @@ assert.match(
   manualDiscoveryProbe,
   /Exact Google follow-up: not run; Search skipped under the one-call manual cap/
 );
+assert.doesNotMatch(manualDiscoveryProbe, /manual cap\.\./);
 assert.match(
   manualDiscoveryProbe,
   /Open exact Google search: https:\/\/www\.google\.com\/travel\/flights\?q=exact-pen/
