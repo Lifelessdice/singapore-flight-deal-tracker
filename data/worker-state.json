@@ -283,21 +283,21 @@
   "promotions": {
     "airasia-sg": {
       "fingerprint": "269bf236adc9fa6749ee17e01d86fb241add32dce05243d7f73c228bc09cb3b7",
-      "checkedAt": "2026-07-20T07:06:48.846Z",
+      "checkedAt": "2026-07-20T07:28:55.127Z",
       "url": "https://www.airasia.com/promotions/sg/",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     },
     "scoot-deals": {
       "fingerprint": "a114aa5acd8e4921fffe294a3f96f17d5c99c7704d597a5ca5c76ecff9776a40",
-      "checkedAt": "2026-07-20T07:06:49.896Z",
+      "checkedAt": "2026-07-20T07:28:55.932Z",
       "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     }
   },
   "promotionErrors": [],
-  "lastRunAt": "2026-07-20T07:06:48.132Z",
+  "lastRunAt": "2026-07-20T07:28:54.166Z",
   "constructionEvidence": {},
   "dateFirstReturnCursor": 0,
   "dateFirstOneWayCursor": 0,
