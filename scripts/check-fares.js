@@ -56,10 +56,13 @@ function cartesian(...groups) {
   return groups.reduce((sets, group) => sets.flatMap((set) => group.map((item) => [...set, item])), [[]]);
 }
 
-function getGoogleFlightsUrl(search) {
-  if (search.googleFlightsUrl) return search.googleFlightsUrl;
+function getGoogleFlightsSearchUrl(search) {
   const query = `${search.origin} to ${search.destination} ${search.departureDate}${search.returnDate ? ` return ${search.returnDate}` : ""}`;
   return `https://www.google.com/travel/flights?q=${encodeURIComponent(query)}`;
+}
+
+function getGoogleFlightsUrl(search) {
+  return search.googleFlightsUrl || getGoogleFlightsSearchUrl(search);
 }
 
 function getTravelClassCode(travelClass) {
@@ -231,7 +234,7 @@ function buildSplitTicketSearches(roundTripSearch) {
   ];
 }
 
-function mapSerpApiOffer(offer, search, priceInsights) {
+function mapSerpApiOffer(offer, search, priceInsights, googleFlightsUrl = null) {
   const flights = (offer.flights || []).map((flight) => ({
     airline: flight.airline || "",
     flightNumber: flight.flight_number || "",
@@ -360,6 +363,7 @@ function mapSerpApiOffer(offer, search, priceInsights) {
     baggageNotes: extensions.filter((extension) => /bag|carry-on|personal item/i.test(extension)),
     rawId: offer.departure_token || "",
     bookingToken: offer.booking_token || "",
+    googleFlightsUrl,
     averagePrice: search.discoveryAveragePrice ?? null,
     discountPercentage: search.discoveryDiscountPercentage ?? null,
     googlePriceInsights: priceInsights || search.discoveryGooglePriceInsights || null
@@ -409,13 +413,19 @@ async function searchSerpApi(search, options = {}) {
   }
 
   const rawFlights = [...(data.best_flights || []), ...(data.other_flights || [])];
+  const googleFlightsUrl = data.search_metadata?.google_flights_url || null;
   const offers = rawFlights
-    .map((offer) => mapSerpApiOffer(offer, search, data.price_insights))
+    .map((offer) => mapSerpApiOffer(
+      offer,
+      search,
+      data.price_insights,
+      googleFlightsUrl
+    ))
     .filter((offer) => Number.isFinite(offer.price))
     .filter((offer) => !search.maxTotalDurationMinutes || offer.totalDurationMinutes <= search.maxTotalDurationMinutes)
     .filter((offer) => search.maxStops === null || offer.maxStops <= search.maxStops);
 
-  return { ok: true, offers };
+  return { ok: true, offers, googleFlightsUrl };
 }
 
 async function verifyRoundTripOffer(search, outboundOffer, searchFunction = searchSerpApi) {
@@ -448,6 +458,9 @@ function combineRoundTripOffers(outboundOffer, returnOffer) {
     outboundDurationMinutes: outboundOffer.totalDurationMinutes,
     returnFlights: returnOffer.flights,
     returnLayovers: returnOffer.layovers,
+    googleFlightsUrl: returnOffer.googleFlightsUrl ||
+      outboundOffer.googleFlightsUrl ||
+      null,
     maxLayoverMinutes: Math.max(
       outboundOffer.maxLayoverMinutes || 0,
       returnOffer.maxLayoverMinutes || 0
@@ -731,7 +744,10 @@ function buildExploreVerificationSearch(candidate) {
     discoveryDiscountPercentage: candidate.discountPercentage,
     discoveryGooglePriceInsights: candidate.googlePriceInsights,
     discoveryEvidence: candidate.ranking,
-    googleFlightsUrl: candidate.googleFlightsUrl || null
+    discoveryTotalDurationMinutes: candidate.totalDurationMinutes,
+    discoveryStops: candidate.stops,
+    discoveryAirline: candidate.airline || "",
+    exploreUrl: candidate.googleFlightsUrl || null
   };
 }
 
@@ -845,7 +861,7 @@ function summarizeCandidate(search, offer, history) {
     search,
     offer,
     links: {
-      googleFlights: getGoogleFlightsUrl(search),
+      googleFlights: offer.googleFlightsUrl || getGoogleFlightsSearchUrl(search),
       itaMatrix: getItaMatrixUrl(search),
       skiplagged: getSkiplaggedUrl(search)
     }
@@ -1147,13 +1163,16 @@ function formatAlert(candidates) {
       lines.push(`Traveler fit: ${travelerDetails}. Verify current entry and transit rules before booking.`);
     }
     lines.push(`Trip details: ${entry.notes}.`);
-    lines.push(`Google Flights: ${candidate.links.googleFlights}`);
+    lines.push("Live-search links (recheck the fare before booking):");
+    lines.push(`Google Flights exact results: ${candidate.links.googleFlights}`);
     if (candidate.links.outboundGoogleFlights) {
       lines.push(`Outbound one-way: ${candidate.links.outboundGoogleFlights}`);
       lines.push(`Return one-way: ${candidate.links.inboundGoogleFlights}`);
     }
-    lines.push(`ITA Matrix: ${candidate.links.itaMatrix}`);
-    lines.push(`Skiplagged: ${candidate.links.skiplagged}`);
+    lines.push(
+      `ITA Matrix comparison (enter the route and dates manually): ${candidate.links.itaMatrix}`
+    );
+    lines.push(`Skiplagged route/date comparison: ${candidate.links.skiplagged}`);
     lines.push("");
   });
 
@@ -1302,6 +1321,40 @@ function formatNoDealSummary(candidates, options = {}) {
     lines.push(
       `Promotion watch: checked ${options.promotionResult.checked} official airline page${options.promotionResult.checked === 1 ? "" : "s"}; ${options.promotionResult.changed.length} changed since the previous check.`
     );
+  }
+  const exploreLeads = (discoveryResult.searches || []).slice(0, 3);
+  if (exploreLeads.length) {
+    lines.push(
+      "",
+      "Top Explore leads (indicative, not exactly verified):",
+      "These are ranked discovery leads, not deal alerts. Open Google Flights to confirm the current itinerary and price."
+    );
+    exploreLeads.forEach((search, index) => {
+      const dates = `${formatTravelDate(search.departureDate)}${search.returnDate ? ` to ${formatTravelDate(search.returnDate)}` : ""}`;
+      const stops = Number(search.discoveryStops);
+      const stopSummary = Number.isFinite(stops)
+        ? stops === 0
+          ? "nonstop"
+          : `${stops} stop${stops === 1 ? "" : "s"}`
+        : "stops unknown";
+      const duration = Number(search.discoveryTotalDurationMinutes);
+      const durationSummary = Number.isFinite(duration)
+        ? `${Math.floor(duration / 60)}h ${duration % 60}m`
+        : "duration unknown";
+      const airline = search.discoveryAirline
+        ? ` | ${search.discoveryAirline}`
+        : "";
+      lines.push(
+        `${index + 1}. ${search.origin} -> ${search.destination} (${search.destinationName || search.destination}) | ${dates} | indicative ${search.currencyCode} ${search.discoveryPrice} | ${stopSummary} | ${durationSummary}${airline}`
+      );
+      if (search.discoveryEvidence?.reasons?.length) {
+        lines.push(`Why it ranked: ${search.discoveryEvidence.reasons.join("; ")}.`);
+      }
+      lines.push(`Check exact flights: ${getGoogleFlightsSearchUrl(search)}`);
+      if (search.exploreUrl) {
+        lines.push(`Open original Explore result: ${search.exploreUrl}`);
+      }
+    });
   }
   const manualReviewCandidates = candidates.filter((candidate) => (
     isFareDeal(candidate) &&

@@ -84,6 +84,13 @@ Up to three results are verified with exact Google Flights searches. Selection
 preserves a one-way option and one unfamiliar destination when they are
 available, including exploration-only options.
 
+Every completed heartbeat can show those selected Explore leads even when the
+shared call cap prevents exact follow-up. Each lead includes its indicative
+price and itinerary facts, ranking reasons, the original Explore page when
+available, and a newly generated exact route/date Google Flights search. These
+are discovery actions, not deal alerts, until exact pricing and the normal deal
+tests succeed.
+
 SerpApi's first round-trip response describes the outbound selection. Before a
 round-trip price signal can alert, the worker follows its `departure_token` and
 requires a compatible return to pass the stop and duration rules. At most one

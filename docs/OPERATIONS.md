@@ -24,11 +24,15 @@ A manual workflow run forces execution, defaults to one exact search, and disabl
 date-first Explore and alternative construction unless explicitly selected.
 Manual runs update usage and coverage but do not postpone the next scheduled
 cycle or advance the production date-lane cursors. The manual `max_searches`
-input caps both the selected exact queue and the total provider attempts, so a
-one-search discovery smoke test spends at most one credit.
+input controls the routine exact-search queue. The independent `max_calls` input
+caps all provider attempts across Explore, exact verification, routine searches,
+constructions, and return verification. Both default to one, so a discovery
+smoke test still spends at most one credit.
 Its Discord message separates raw Explore options from exactly verified fares and
-states that cap-driven skipped follow-ups are expected; it does not report a
-deal/no-deal conclusion from unverified discovery results.
+states that cap-driven skipped follow-ups are expected. Selected raw leads include
+indicative itinerary details, ranking reasons, and exact route/date Google
+Flights links, but the worker does not report a deal/no-deal conclusion from
+unverified discovery results.
 
 ## Commands
 
@@ -46,10 +50,17 @@ present.
 Every completed scheduled cycle sends either:
 
 - a deal alert with price, relative analysis, confidence evidence, traveler-value
-  action, risks, itinerary checks, and links; or
+  action, risks, itinerary checks, and live comparison links; or
 - a no-deal heartbeat with the cheapest observations, rejection reasons, request
   usage, exact coverage, date-first lane coverage, construction activity, and
-  promotion-page health.
+  promotion-page health. Up to three top Explore leads remain actionable even
+  when no exact candidate qualifies.
+
+The primary deal link is the selected Google Flights results page returned with
+the exact provider response, with a generated route/date search as fallback.
+Skiplagged receives route and dates. ITA Matrix opens its generic search page and
+is explicitly labeled for manual route/date entry. All displayed fares must be
+rechecked before purchase.
 
 Official airline promotion changes are sent as a separate lead. A promotion-page
 change is not a verified flight deal. A new page fingerprint must repeat on two
@@ -95,7 +106,8 @@ preserve billable work.
 ## Cloud QA
 
 1. Push a branch or `main` change.
-2. Open Actions and run `Fare check` manually with one search.
+2. Open Actions and run `Fare check` manually with `max_searches=1` and
+   `max_calls=1`.
 3. Enable discovery and leave constructions disabled to probe one date-first
    Explore lane without allowing exact follow-up calls.
 4. Confirm tests pass, the fare step succeeds, Discord receives a heartbeat, and
@@ -103,7 +115,10 @@ preserve billable work.
 5. Verify `providerStats.attempted` is one and manual execution did not change
    `lastCompletedAt`.
 
-Never use a full scheduled-size run merely to test formatting.
+For an intentional end-to-end product test, set `max_searches=9`,
+`max_calls=14`, and enable both discovery and constructions. This reproduces the
+scheduled allocation and may spend up to 14 credits. Use it sparingly; formatting
+alone remains covered by deterministic tests.
 
 ## Maintaining transit policies
 

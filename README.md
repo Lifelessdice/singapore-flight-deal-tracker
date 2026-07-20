@@ -51,11 +51,15 @@ A deal notification explains:
 - return-flight verification for round trips;
 - baggage uncertainty, weekday timing, separate-ticket risk, and other tradeoffs;
 - self-transfer requirements and estimated extra costs when relevant;
-- a live Google Flights link for final verification and booking.
+- the provider's live Google Flights result page when available, plus dated
+  Google Flights and Skiplagged comparison links.
 
 When nothing qualifies, the heartbeat reports the cheapest fares observed,
 why they did not trigger, search coverage, provider health, quota use, and any
-self-transfers requiring manual review.
+self-transfers requiring manual review. It also lists up to three top-ranked
+Explore leads with their indicative price, duration, stops, ranking evidence,
+and a one-click exact route/date search. Explore leads are clearly separated
+from exactly verified fares because their displayed price can change.
 
 ## How it works
 
@@ -71,7 +75,9 @@ self-transfers requiring manual review.
    later checks to compare like-for-like prices.
 
 ITA Matrix and Skiplagged are provided as manual verification tools. They are not
-scraped by the background worker.
+scraped by the background worker. ITA Matrix does not support a dependable
+prefilled link here, so the notification tells the user to enter the included
+route and dates manually.
 
 ## Quick start
 
@@ -126,7 +132,7 @@ next scheduled cycle.
 ### 4. Enable the background worker
 
 Open the repository's **Actions** tab, select **Fare check**, and run it manually
-with the default one-search settings. Confirm that:
+with the default one-search and one-total-call settings. Confirm that:
 
 - the workflow succeeds;
 - Discord receives a heartbeat;

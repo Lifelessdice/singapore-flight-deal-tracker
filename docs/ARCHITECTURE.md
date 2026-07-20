@@ -12,6 +12,13 @@ Automated prices come from SerpApi's Google Travel Explore and Google Flights
 engines. ITA Matrix and Skiplagged are verification links only; the worker does
 not scrape either site.
 
+Exact Google Flights responses carry SerpApi's selected Google result URL into
+the normalized offer and final notification. A generated route/date Google
+Flights URL is the fallback. Explore links remain attached only to discovery
+leads so an indicative Explore page cannot be mistaken for an exactly verified
+itinerary. ITA Matrix is deliberately labeled as a manual route/date comparison
+because its generic search page is not prefilled.
+
 ## Search lanes
 
 - `date-first-return`: one Explore call for a configured departure/return pair.

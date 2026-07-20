@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const {
   alertKey,
+  buildExploreVerificationSearch,
   buildSplitTicketSearches,
   combineRoundTripOffers,
   evaluateRunCompletion,
@@ -95,7 +96,28 @@ const manualDiscoveryProbe = formatNoDealSummary([], {
   discoveryResult: {
     exploredCandidates: 4,
     laneCount: 2,
-    successfulLaneCount: 1
+    successfulLaneCount: 1,
+    searches: [{
+      origin: "SIN",
+      destination: "PEN",
+      destinationName: "Penang",
+      departureDate: "2026-09-08",
+      returnDate: "",
+      tripType: "one-way",
+      currencyCode: "USD",
+      discoveryPrice: 45,
+      discoveryTotalDurationMinutes: 80,
+      discoveryStops: 0,
+      discoveryAirline: "AirAsia",
+      discoveryEvidence: {
+        reasons: [
+          "31% below matched history",
+          "0 stops",
+          "80 minutes"
+        ]
+      },
+      exploreUrl: "https://www.google.com/travel/explore?lead=pen"
+    }]
   },
   providerStats: {
     attempted: 1,
@@ -112,6 +134,15 @@ assert.match(manualDiscoveryProbe, /did not make a deal\/no-deal decision/);
 assert.match(manualDiscoveryProbe, /Checked 0 exactly verified fare candidates/);
 assert.match(manualDiscoveryProbe, /Skipped follow-up searches are expected/);
 assert.match(manualDiscoveryProbe, /did not change the scheduled 48-hour cadence/);
+assert.match(manualDiscoveryProbe, /Top Explore leads \(indicative, not exactly verified\)/);
+assert.match(manualDiscoveryProbe, /SIN -> PEN \(Penang\)/);
+assert.match(manualDiscoveryProbe, /indicative USD 45 \| nonstop \| 1h 20m \| AirAsia/);
+assert.match(manualDiscoveryProbe, /Why it ranked: 31% below matched history/);
+assert.match(
+  manualDiscoveryProbe,
+  /Check exact flights: https:\/\/www\.google\.com\/travel\/flights\?q=SIN%20to%20PEN%202026-09-08/
+);
+assert.match(manualDiscoveryProbe, /Open original Explore result/);
 assert.doesNotMatch(manualDiscoveryProbe, /No new relative deals matched/);
 assert.doesNotMatch(manualDiscoveryProbe, /API or route errors/);
 
@@ -184,7 +215,9 @@ const oneWayExplorePromise = searchGoogleTravelExploreLane(
           start_date: "2026-09-08",
           flight_price: 45,
           flight_duration: 80,
-          number_of_stops: 0
+          number_of_stops: 0,
+          airline: "AirAsia",
+          link: "https://www.google.com/travel/explore?lead=pen"
         }]
       })
     };
@@ -195,6 +228,16 @@ const oneWayExplorePromise = searchGoogleTravelExploreLane(
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0].tripType, "one-way");
   assert.equal(result.candidates[0].destination, "PEN");
+  const verificationSearch = buildExploreVerificationSearch(result.candidates[0]);
+  assert.equal(verificationSearch.discoveryPrice, 45);
+  assert.equal(verificationSearch.discoveryTotalDurationMinutes, 80);
+  assert.equal(verificationSearch.discoveryStops, 0);
+  assert.equal(verificationSearch.discoveryAirline, "AirAsia");
+  assert.equal(
+    verificationSearch.exploreUrl,
+    "https://www.google.com/travel/explore?lead=pen"
+  );
+  assert.equal(verificationSearch.googleFlightsUrl, undefined);
   assert.equal(
     result.candidates[0].observedAt,
     Date.parse("2026-07-18T00:00:00Z")
@@ -270,7 +313,8 @@ const combinedRoundTrip = combineRoundTripOffers(
     maxLayoverMinutes: 60,
     hasOvernight: false,
     baggageNotes: ["Cabin bag for a fee"],
-    bookingToken: "booking-token"
+    bookingToken: "booking-token",
+    googleFlightsUrl: "https://www.google.com/travel/flights?selected=return"
   }
 );
 assert.equal(combinedRoundTrip.price, 155);
@@ -278,6 +322,10 @@ assert.equal(combinedRoundTrip.verifiedRoundTrip, true);
 assert.equal(combinedRoundTrip.outboundDurationMinutes, 90);
 assert.equal(combinedRoundTrip.returnDurationMinutes, 100);
 assert.deepEqual(combinedRoundTrip.airlines, ["Scoot", "AirAsia"]);
+assert.equal(
+  combinedRoundTrip.googleFlightsUrl,
+  "https://www.google.com/travel/flights?selected=return"
+);
 
 const mappedTransfer = mapSerpApiOffer(
   {
@@ -305,13 +353,18 @@ const mappedTransfer = mapSerpApiOffer(
     destination: "HKT",
     transitAirportCountries: { BKK: "THA" }
   },
-  null
+  null,
+  "https://www.google.com/travel/flights?selected=exact"
 );
 assert.equal(mappedTransfer.hasSelfTransfer, true);
 assert.equal(mappedTransfer.hasAirportChange, true);
 assert.equal(mappedTransfer.itineraryProtection, "self-transfer");
 assert.equal(mappedTransfer.connections[0].transitCountry, "THA");
 assert.equal(mappedTransfer.connections[0].durationMinutes, 540);
+assert.equal(
+  mappedTransfer.googleFlightsUrl,
+  "https://www.google.com/travel/flights?selected=exact"
+);
 
 const protectedAndTransfer = selectCandidateOffers([
   {
@@ -391,6 +444,10 @@ const selfHistoryCandidate = summarizeCandidate(
 );
 assert.equal(selfHistoryCandidate.entry.searchStrategy, "airport-change");
 assert.equal(selfHistoryCandidate.insights.baselineSampleCount, 0);
+assert.equal(
+  selfHistoryCandidate.links.googleFlights,
+  "https://www.google.com/travel/flights?selected=exact"
+);
 const protectedHistoryCandidate = summarizeCandidate(
   baseSearch,
   {
@@ -517,6 +574,10 @@ assert.match(
 );
 assert.match(acceptableAlert, /informational, not an eligibility threshold/);
 assert.match(acceptableAlert, /Separate tickets are unprotected/);
+assert.match(acceptableAlert, /Live-search links \(recheck the fare before booking\)/);
+assert.match(acceptableAlert, /Google Flights exact results:/);
+assert.match(acceptableAlert, /ITA Matrix comparison \(enter the route and dates manually\)/);
+assert.match(acceptableAlert, /Skiplagged route\/date comparison:/);
 
 const rejectedCandidate = {
   ...manualCandidate,

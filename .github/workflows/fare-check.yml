@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       max_searches:
-        description: Searches to run during this manual test
+        description: Routine exact searches selected during this manual test
+        required: false
+        default: "1"
+      max_calls:
+        description: Total provider-call cap for this manual test
         required: false
         default: "1"
       run_discovery:
@@ -48,7 +52,7 @@ jobs:
           REQUIRE_NOTIFICATION_CHANNEL: "true"
           FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' }}
           MAX_SEARCHES_PER_RUN: ${{ inputs.max_searches }}
-          MAX_CALLS_PER_CYCLE: ${{ github.event_name == 'workflow_dispatch' && inputs.max_searches || '' }}
+          MAX_CALLS_PER_CYCLE: ${{ github.event_name == 'workflow_dispatch' && inputs.max_calls || '' }}
           DISCOVERY_ENABLED: ${{ github.event_name != 'workflow_dispatch' || inputs.run_discovery }}
           CONSTRUCTIONS_ENABLED: ${{ github.event_name != 'workflow_dispatch' || inputs.run_constructions }}
         run: node scripts/check-fares.js
