@@ -1,42 +1,22 @@
 {
   "cursor": 28,
   "totalSearches": 644,
-  "checkedThisRun": 6,
+  "checkedThisRun": 1,
   "discoveryMonthCursor": 2,
   "exploredMonth": null,
-  "exploredCandidates": 34,
+  "exploredCandidates": 4,
   "flexibleDealsChecked": 3,
   "splitTicketsChecked": 0,
   "splitComparisons": [],
   "returnVerificationsAttempted": 0,
   "returnVerificationsPassed": 0,
   "providerStats": {
-    "attempted": 12,
-    "successful": 12,
+    "attempted": 1,
+    "successful": 1,
     "failed": 0,
-    "skipped": 0,
+    "skipped": 5,
     "byKind": {
       "date-first-return": {
-        "attempted": 1,
-        "successful": 1,
-        "failed": 0
-      },
-      "date-first-one-way": {
-        "attempted": 1,
-        "successful": 1,
-        "failed": 0
-      },
-      "explore-verify": {
-        "attempted": 3,
-        "successful": 3,
-        "failed": 0
-      },
-      "exact": {
-        "attempted": 6,
-        "successful": 6,
-        "failed": 0
-      },
-      "construction": {
         "attempted": 1,
         "successful": 1,
         "failed": 0
@@ -47,14 +27,14 @@
   "lastCompletedAt": "2026-07-18T07:47:14.079Z",
   "alerts": {},
   "constructionCursor": 0,
-  "constructionSummary": "evidence selected Kuala Lumpur via KUL or SZB as a grouped nearby-airport search",
+  "constructionSummary": "",
   "quota": {
     "planName": "Free Plan",
     "monthlyLimit": 250,
-    "usedThisMonth": 59,
-    "remaining": 191,
+    "usedThisMonth": 71,
+    "remaining": 179,
     "reserveSearches": 10,
-    "spendableThisRun": 181,
+    "spendableThisRun": 169,
     "renewalDate": "2026-08-12",
     "after": {
       "planName": "Free Plan",
@@ -65,7 +45,7 @@
       "spendableThisRun": 169,
       "renewalDate": "2026-08-12"
     },
-    "providerUsageDelta": 12
+    "providerUsageDelta": 0
   },
   "coverage": {
     "eligibleSearches": 392,
@@ -303,21 +283,21 @@
   "promotions": {
     "airasia-sg": {
       "fingerprint": "269bf236adc9fa6749ee17e01d86fb241add32dce05243d7f73c228bc09cb3b7",
-      "checkedAt": "2026-07-20T07:02:15.713Z",
+      "checkedAt": "2026-07-20T07:06:48.846Z",
       "url": "https://www.airasia.com/promotions/sg/",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     },
     "scoot-deals": {
       "fingerprint": "a114aa5acd8e4921fffe294a3f96f17d5c99c7704d597a5ca5c76ecff9776a40",
-      "checkedAt": "2026-07-20T07:02:16.459Z",
+      "checkedAt": "2026-07-20T07:06:49.896Z",
       "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     }
   },
   "promotionErrors": [],
-  "lastRunAt": "2026-07-20T07:01:30.014Z",
+  "lastRunAt": "2026-07-20T07:06:48.132Z",
   "constructionEvidence": {},
   "dateFirstReturnCursor": 0,
   "dateFirstOneWayCursor": 0,
