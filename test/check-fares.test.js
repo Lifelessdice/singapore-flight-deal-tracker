@@ -481,6 +481,7 @@ const protectedHistory = [15, 16, 17].map((day, index) => ({
   carryOnBags: 0,
   checkedBags: 0
 }));
+const fixedCandidateObservedAt = Date.parse("2026-07-18T00:00:00Z");
 const selfHistoryCandidate = summarizeCandidate(
   baseSearch,
   {
@@ -494,10 +495,12 @@ const selfHistoryCandidate = summarizeCandidate(
     maxStops: 1,
     baggageNotes: []
   },
-  protectedHistory
+  protectedHistory,
+  { observedAt: fixedCandidateObservedAt }
 );
 assert.equal(selfHistoryCandidate.entry.searchStrategy, "airport-change");
 assert.equal(selfHistoryCandidate.insights.baselineSampleCount, 0);
+assert.equal(selfHistoryCandidate.entry.loggedAt, fixedCandidateObservedAt);
 assert.equal(
   selfHistoryCandidate.links.googleFlights,
   "https://www.google.com/travel/flights?selected=exact"
@@ -512,10 +515,28 @@ const protectedHistoryCandidate = summarizeCandidate(
     transferAssessment: { status: "protected", extraEstimatedCost: 0 },
     price: 140
   },
-  protectedHistory
+  protectedHistory,
+  { observedAt: fixedCandidateObservedAt }
 );
 assert.equal(protectedHistoryCandidate.entry.searchStrategy, "protected");
 assert.equal(protectedHistoryCandidate.insights.baselineSampleCount, 3);
+
+const beforeLeadTimeBoundary = summarizeCandidate(
+  baseSearch,
+  protectedHistoryCandidate.offer,
+  protectedHistory,
+  { observedAt: Date.parse("2026-07-23T08:43:00Z") }
+);
+const afterLeadTimeBoundary = summarizeCandidate(
+  baseSearch,
+  protectedHistoryCandidate.offer,
+  protectedHistory,
+  { observedAt: Date.parse("2026-07-24T08:43:00Z") }
+);
+assert.equal(beforeLeadTimeBoundary.entry.leadTimeBucket, "15-30d");
+assert.equal(beforeLeadTimeBoundary.insights.baselineSampleCount, 3);
+assert.equal(afterLeadTimeBoundary.entry.leadTimeBucket, "0-14d");
+assert.equal(afterLeadTimeBoundary.insights.baselineSampleCount, 0);
 
 const manualCandidate = {
   ...candidate,

@@ -751,8 +751,10 @@ function buildExploreVerificationSearch(candidate) {
   };
 }
 
-function summarizeCandidate(search, offer, history) {
-  const loggedAt = Date.now();
+function summarizeCandidate(search, offer, history, options = {}) {
+  const loggedAt = Number.isFinite(options.observedAt)
+    ? options.observedAt
+    : Date.now();
   const leadTimeBucket = getLeadTimeBucket(search.departureDate, loggedAt);
   const tripLengthDays = search.returnDate
     ? Math.round((
