@@ -1,10 +1,10 @@
 {
-  "cursor": 112,
-  "totalSearches": 560,
+  "cursor": 118,
+  "totalSearches": 532,
   "checkedThisRun": 6,
   "discoveryMonthCursor": 2,
   "exploredMonth": null,
-  "exploredCandidates": 52,
+  "exploredCandidates": 46,
   "flexibleDealsChecked": 3,
   "splitTicketsChecked": 0,
   "splitComparisons": [],
@@ -44,7 +44,7 @@
     },
     "errors": []
   },
-  "lastCompletedAt": "2026-08-21T07:05:15.320Z",
+  "lastCompletedAt": "2026-08-23T06:58:37.074Z",
   "alerts": {
     "SIN:KUL:one-way:2026-08-21::protected": {
       "price": 82,
@@ -52,31 +52,31 @@
     }
   },
   "constructionCursor": 0,
-  "constructionSummary": "evidence selected Kuala Lumpur via KUL or SZB as a grouped nearby-airport search",
+  "constructionSummary": "evidence selected Manila via MNL or CRK as a grouped nearby-airport search",
   "quota": {
     "planName": "Free Plan",
     "monthlyLimit": 250,
-    "usedThisMonth": 48,
-    "remaining": 202,
+    "usedThisMonth": 60,
+    "remaining": 190,
     "reserveSearches": 10,
-    "spendableThisRun": 192,
+    "spendableThisRun": 180,
     "renewalDate": "2026-09-12",
     "after": {
       "planName": "Free Plan",
       "monthlyLimit": 250,
-      "usedThisMonth": 58,
-      "remaining": 192,
+      "usedThisMonth": 71,
+      "remaining": 179,
       "reserveSearches": 10,
-      "spendableThisRun": 182,
+      "spendableThisRun": 169,
       "renewalDate": "2026-09-12"
     },
-    "providerUsageDelta": 10
+    "providerUsageDelta": 11
   },
   "coverage": {
-    "eligibleSearches": 392,
-    "recentlyCoveredSearches": 27,
-    "recentlySuccessfulSearches": 27,
-    "coveragePercent": 7,
+    "eligibleSearches": 420,
+    "recentlyCoveredSearches": 33,
+    "recentlySuccessfulSearches": 33,
+    "coveragePercent": 8,
     "destinationCount": 14,
     "staleDestinations": [
       "KUL",
@@ -84,7 +84,6 @@
       "DMK",
       "CNX",
       "DPS",
-      "CGK",
       "HAN"
     ],
     "recentDays": 14,
@@ -2275,11 +2274,11 @@
       "tripType": "round-trip",
       "searchStrategy": "nearby-airports",
       "kind": "construction",
-      "lastAttemptAt": "2026-08-19T07:03:52.415Z",
-      "lastSuccessAt": "2026-08-19T07:03:52.415Z",
-      "lastOfferAt": "2026-08-19T07:03:52.415Z",
+      "lastAttemptAt": "2026-08-23T06:59:28.322Z",
+      "lastSuccessAt": "2026-08-23T06:59:28.322Z",
+      "lastOfferAt": "2026-08-23T06:59:28.322Z",
       "lastError": null,
-      "runId": "2026-08-19T07:03:04.377Z"
+      "runId": "2026-08-23T06:58:37.074Z"
     },
     "explore-verify|explore-SIN-KUL|SIN|KUL|2026-11-13|2026-11-16|round-trip|standard|ECONOMY|1|0|0": {
       "routeId": "explore-SIN-KUL",
@@ -2430,26 +2429,161 @@
       "lastOfferAt": "2026-08-21T07:06:07.244Z",
       "lastError": null,
       "runId": "2026-08-21T07:05:15.320Z"
+    },
+    "explore-verify|explore-SIN-KUL|SIN|KUL|2026-11-20|2026-11-23|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "explore-SIN-KUL",
+      "origin": "SIN",
+      "destination": "KUL",
+      "departureDate": "2026-11-20",
+      "returnDate": "2026-11-23",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "explore-verify",
+      "lastAttemptAt": "2026-08-23T06:58:49.005Z",
+      "lastSuccessAt": "2026-08-23T06:58:49.005Z",
+      "lastOfferAt": "2026-08-23T06:58:49.005Z",
+      "lastError": null,
+      "runId": "2026-08-23T06:58:37.074Z"
+    },
+    "explore-verify|explore-SIN-KTI|SIN|KTI|2026-11-20|2026-11-23|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "explore-SIN-KTI",
+      "origin": "SIN",
+      "destination": "KTI",
+      "departureDate": "2026-11-20",
+      "returnDate": "2026-11-23",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "explore-verify",
+      "lastAttemptAt": "2026-08-23T06:58:52.719Z",
+      "lastSuccessAt": "2026-08-23T06:58:52.719Z",
+      "lastOfferAt": "2026-08-23T06:58:52.719Z",
+      "lastError": null,
+      "runId": "2026-08-23T06:58:37.074Z"
+    },
+    "explore-verify|explore-SIN-KUL|SIN|KUL|2026-11-20||one-way|standard|ECONOMY|1|0|0": {
+      "routeId": "explore-SIN-KUL",
+      "origin": "SIN",
+      "destination": "KUL",
+      "departureDate": "2026-11-20",
+      "returnDate": "",
+      "tripType": "one-way",
+      "searchStrategy": "standard",
+      "kind": "explore-verify",
+      "lastAttemptAt": "2026-08-23T06:58:54.841Z",
+      "lastSuccessAt": "2026-08-23T06:58:54.841Z",
+      "lastOfferAt": "2026-08-23T06:58:54.841Z",
+      "lastError": null,
+      "runId": "2026-08-23T06:58:37.074Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|CGK|2026-09-08|2026-09-10|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "CGK",
+      "departureDate": "2026-09-08",
+      "returnDate": "2026-09-10",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-08-23T06:58:57.907Z",
+      "lastSuccessAt": "2026-08-23T06:58:57.907Z",
+      "lastOfferAt": "2026-08-23T06:58:57.907Z",
+      "lastError": null,
+      "runId": "2026-08-23T06:58:37.074Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|CGK|2026-09-11|2026-09-14|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "CGK",
+      "departureDate": "2026-09-11",
+      "returnDate": "2026-09-14",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-08-23T06:59:05.930Z",
+      "lastSuccessAt": "2026-08-23T06:59:05.930Z",
+      "lastOfferAt": "2026-08-23T06:59:05.930Z",
+      "lastError": null,
+      "runId": "2026-08-23T06:58:37.074Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|CGK|2026-09-18|2026-09-21|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "CGK",
+      "departureDate": "2026-09-18",
+      "returnDate": "2026-09-21",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-08-23T06:59:11.168Z",
+      "lastSuccessAt": "2026-08-23T06:59:11.168Z",
+      "lastOfferAt": "2026-08-23T06:59:11.168Z",
+      "lastError": null,
+      "runId": "2026-08-23T06:58:37.074Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|CGK|2026-09-22|2026-09-24|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "CGK",
+      "departureDate": "2026-09-22",
+      "returnDate": "2026-09-24",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-08-23T06:59:14.860Z",
+      "lastSuccessAt": "2026-08-23T06:59:14.860Z",
+      "lastOfferAt": "2026-08-23T06:59:14.860Z",
+      "lastError": null,
+      "runId": "2026-08-23T06:58:37.074Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|CGK|2026-10-02|2026-10-05|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "CGK",
+      "departureDate": "2026-10-02",
+      "returnDate": "2026-10-05",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-08-23T06:59:23.851Z",
+      "lastSuccessAt": "2026-08-23T06:59:23.851Z",
+      "lastOfferAt": "2026-08-23T06:59:23.851Z",
+      "lastError": null,
+      "runId": "2026-08-23T06:58:37.074Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|CGK|2026-08-25||one-way|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "CGK",
+      "departureDate": "2026-08-25",
+      "returnDate": "",
+      "tripType": "one-way",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-08-23T06:59:25.129Z",
+      "lastSuccessAt": "2026-08-23T06:59:25.129Z",
+      "lastOfferAt": "2026-08-23T06:59:25.129Z",
+      "lastError": null,
+      "runId": "2026-08-23T06:58:37.074Z"
     }
   },
   "promotions": {
     "airasia-sg": {
       "fingerprint": "dc0ed4351ceec69a04026e5596f959f1cd37faa8129051217a0fd81d14f49044",
-      "checkedAt": "2026-08-21T07:06:07.686Z",
+      "checkedAt": "2026-08-23T06:59:28.983Z",
       "url": "https://www.airasia.com/promotions/sg/",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     },
     "scoot-deals": {
       "fingerprint": "a114aa5acd8e4921fffe294a3f96f17d5c99c7704d597a5ca5c76ecff9776a40",
-      "checkedAt": "2026-08-21T07:06:08.927Z",
+      "checkedAt": "2026-08-23T06:59:29.848Z",
       "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     }
   },
   "promotionErrors": [],
-  "lastRunAt": "2026-08-21T07:05:15.320Z",
+  "lastRunAt": "2026-08-23T06:58:37.074Z",
   "constructionEvidence": {
     "split-SIN-PEN": {
       "lastSelectedAt": "2026-07-20T09:32:27.473Z",
@@ -2506,19 +2640,19 @@
       ]
     },
     "manila-any": {
-      "lastSelectedAt": "2026-08-19T07:03:04.377Z",
-      "score": 21.8,
-      "expectedSavings": 0,
+      "lastSelectedAt": "2026-08-23T06:58:37.074Z",
+      "score": 21.55,
+      "expectedSavings": -1,
       "expectedSavingsPercent": 0,
       "evidence": [
-        "recent component-airport floor 244"
+        "recent grouped fare 245"
       ]
     }
   },
-  "dateFirstReturnCursor": 14,
-  "dateFirstOneWayCursor": 14,
+  "dateFirstReturnCursor": 15,
+  "dateFirstOneWayCursor": 15,
   "dateFirstLaneDates": [
-    "2026-11-13/2026-11-16",
-    "2026-11-13 one-way"
+    "2026-11-20/2026-11-23",
+    "2026-11-20 one-way"
   ]
 }
