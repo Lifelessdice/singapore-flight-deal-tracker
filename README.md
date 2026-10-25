@@ -8,6 +8,12 @@ It discovers destinations from Singapore, checks promising leads against exact r
 
 [Architecture](docs/ARCHITECTURE.md) · [Deal criteria](DEAL_CRITERIA.md) · [Operations](docs/OPERATIONS.md) · [Roadmap](docs/ROADMAP.md)
 
+## Dashboard preview
+
+![Flight tracker dashboard with an illustrative route](docs/dashboard-preview.jpg)
+
+*Actual local dashboard with an illustrative SIN–KUL route. The target is a user-set threshold, not an observed fare; no live fare search was run for this preview.*
+
 ## Engineering highlights
 
 - **Comparable baselines:** median/MAD analysis separates routes, trip patterns, baggage profiles and ticket strategies.
@@ -249,3 +255,4 @@ This project provides fare-monitoring and comparison assistance. Prices can
 change between the alert and checkout, and it does not guarantee ticket
 availability, admission, transit eligibility, or airline acceptance. Verify the
 full itinerary and applicable travel rules before purchasing.
+
