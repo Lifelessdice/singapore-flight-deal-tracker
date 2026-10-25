@@ -1,17 +1,46 @@
 # Singapore Flight Deal Tracker
 
-An automated flight tracker for finding unusually cheap, practical short trips
-from Singapore.
+A JavaScript fare-monitoring system combining **scheduled searches, statistical price comparisons, quota controls and Discord notifications**.
 
-It checks fares roughly every 48 hours, compares each price with matched market
-and historical evidence, and sends a detailed Discord alert when a fare is
-genuinely unusual. A no-deal heartbeat is sent after every completed scheduled
-cycle so you can tell that the tracker is still working.
+It discovers destinations from Singapore, checks promising leads against exact route/date searches, and explains why a fare qualifies or needs more review. A separate browser dashboard supports manual route tracking and fare journaling.
 
-The current search profile is designed for one student traveling from Singapore
+**Stack:** JavaScript · Node.js 24+ · GitHub Actions · SerpApi · Discord webhooks · HTML/CSS · localStorage
+
+[Architecture](docs/ARCHITECTURE.md) · [Deal criteria](DEAL_CRITERIA.md) · [Operations](docs/OPERATIONS.md) · [Roadmap](docs/ROADMAP.md)
+
+## Engineering highlights
+
+- **Comparable baselines:** median/MAD analysis separates routes, trip patterns, baggage profiles and ticket strategies.
+- **Discovery followed by verification:** broad Explore results are ranked before selected exact Google Flights checks. Indicative prices stay distinct from exact observations.
+- **Bounded API spending:** search lanes share a call budget, protect an account reserve and stop fare spending when the opening quota balance is unknown.
+- **Failure-aware state:** coverage and spent work are persisted before notification delivery; alert cooldowns are recorded after delivery succeeds.
+- **Explicit uncertainty:** missing transit evidence, unknown transfer costs and unconfirmed baggage stay visible for manual review.
+- **Offline checks:** deterministic tests cover fare analysis, ranking, quota limits, notification formatting and transit-policy behaviour.
+
+## System overview
+
+```text
+GitHub Actions
+      |
+Search configuration + history + quota budget
+      |
+Destination discovery -> exact fare verification
+      |
+Comparable price analysis + traveler-value ranking
+      |
+Return / transfer checks
+      |
+Persist history and state -> Discord alert or heartbeat
+```
+
+The worker checks fares roughly every 48 hours. Completed scheduled cycles produce a deal notification or a no-deal heartbeat containing coverage, provider health, quota use and reviewable leads.
+
+## Example search profile
+
+The checked-in example search profile targets short trips from Singapore
 through December 2026:
 
-- economy, one adult, Swiss passport;
+- economy, one adult;
 - one under-seat backpack and no paid bags;
 - two-to-four-day trips, including weekends, weekdays, and one ways;
 - no more than one stop or 15 hours per direction;
