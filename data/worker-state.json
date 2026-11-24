@@ -1,10 +1,10 @@
 {
-  "cursor": 106,
+  "cursor": 0,
   "totalSearches": 112,
   "checkedThisRun": 6,
   "discoveryMonthCursor": 2,
   "exploredMonth": null,
-  "exploredCandidates": 35,
+  "exploredCandidates": 10,
   "flexibleDealsChecked": 3,
   "splitTicketsChecked": 0,
   "splitComparisons": [],
@@ -12,8 +12,8 @@
   "returnVerificationsPassed": 0,
   "providerStats": {
     "attempted": 12,
-    "successful": 12,
-    "failed": 0,
+    "successful": 9,
+    "failed": 3,
     "skipped": 0,
     "byKind": {
       "date-first-return": {
@@ -23,8 +23,8 @@
       },
       "date-first-one-way": {
         "attempted": 1,
-        "successful": 1,
-        "failed": 0
+        "successful": 0,
+        "failed": 1
       },
       "explore-verify": {
         "attempted": 3,
@@ -33,8 +33,8 @@
       },
       "exact": {
         "attempted": 6,
-        "successful": 6,
-        "failed": 0
+        "successful": 4,
+        "failed": 2
       },
       "construction": {
         "attempted": 1,
@@ -42,9 +42,13 @@
         "failed": 0
       }
     },
-    "errors": []
+    "errors": [
+      "Google Travel Explore date-first-one-way error: Empty results for departure_id: \"SIN\".",
+      "SerpApi error for SIN-DMK: Google Flights hasn't returned any results for this query.",
+      "SerpApi error for SIN-CGK: Google Flights hasn't returned any results for this query."
+    ]
   },
-  "lastCompletedAt": "2026-11-22T14:29:24.531Z",
+  "lastCompletedAt": "2026-11-24T17:36:35.054Z",
   "alerts": {
     "SIN:KUL:one-way:2026-08-21::protected": {
       "price": 82,
@@ -64,37 +68,37 @@
     }
   },
   "constructionCursor": 0,
-  "constructionSummary": "evidence selected Manila via MNL or CRK as a grouped nearby-airport search",
+  "constructionSummary": "evidence selected Bangkok via BKK or DMK as a grouped nearby-airport search",
   "quota": {
     "planName": "Free Plan",
     "monthlyLimit": 250,
-    "usedThisMonth": 48,
-    "remaining": 202,
+    "usedThisMonth": 60,
+    "remaining": 190,
     "reserveSearches": 10,
-    "spendableThisRun": 192,
+    "spendableThisRun": 180,
     "renewalDate": "2026-12-12",
     "after": {
       "planName": "Free Plan",
       "monthlyLimit": 250,
-      "usedThisMonth": 60,
-      "remaining": 190,
+      "usedThisMonth": 71,
+      "remaining": 179,
       "reserveSearches": 10,
-      "spendableThisRun": 180,
+      "spendableThisRun": 169,
       "renewalDate": "2026-12-12"
     },
-    "providerUsageDelta": 12
+    "providerUsageDelta": 11
   },
   "coverage": {
-    "eligibleSearches": 112,
-    "recentlyCoveredSearches": 23,
-    "recentlySuccessfulSearches": 23,
-    "coveragePercent": 21,
+    "eligibleSearches": 84,
+    "recentlyCoveredSearches": 19,
+    "recentlySuccessfulSearches": 19,
+    "coveragePercent": 23,
     "destinationCount": 14,
     "staleDestinations": [
       "KUL",
       "PEN",
-      "DMK",
-      "HKT",
+      "BKK",
+      "CGK",
       "MNL",
       "CEB"
     ],
@@ -5451,11 +5455,11 @@
       "tripType": "round-trip",
       "searchStrategy": "standard",
       "kind": "explore-verify",
-      "lastAttemptAt": "2026-11-17T15:55:37.015Z",
-      "lastSuccessAt": "2026-11-17T15:55:37.015Z",
-      "lastOfferAt": "2026-11-17T15:55:37.015Z",
+      "lastAttemptAt": "2026-11-24T17:36:46.446Z",
+      "lastSuccessAt": "2026-11-24T17:36:46.446Z",
+      "lastOfferAt": "2026-11-24T17:36:46.446Z",
       "lastError": null,
-      "runId": "2026-11-17T15:55:16.885Z"
+      "runId": "2026-11-24T17:36:35.054Z"
     },
     "exact|sin-student-budget-aug-dec-2026|SIN|DPS|2026-11-10|2026-11-12|round-trip|standard|ECONOMY|1|0|0": {
       "routeId": "sin-student-budget-aug-dec-2026",
@@ -6896,26 +6900,161 @@
       "lastOfferAt": "2026-11-22T14:30:16.984Z",
       "lastError": null,
       "runId": "2026-11-22T14:29:24.531Z"
+    },
+    "explore-verify|explore-SIN-MNL|SIN|MNL|2026-12-11|2026-12-14|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "explore-SIN-MNL",
+      "origin": "SIN",
+      "destination": "MNL",
+      "departureDate": "2026-12-11",
+      "returnDate": "2026-12-14",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "explore-verify",
+      "lastAttemptAt": "2026-11-24T17:36:50.467Z",
+      "lastSuccessAt": "2026-11-24T17:36:50.467Z",
+      "lastOfferAt": "2026-11-24T17:36:50.467Z",
+      "lastError": null,
+      "runId": "2026-11-24T17:36:35.054Z"
+    },
+    "explore-verify|explore-SIN-HKT|SIN|HKT|2026-12-11|2026-12-14|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "explore-SIN-HKT",
+      "origin": "SIN",
+      "destination": "HKT",
+      "departureDate": "2026-12-11",
+      "returnDate": "2026-12-14",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "explore-verify",
+      "lastAttemptAt": "2026-11-24T17:36:53.809Z",
+      "lastSuccessAt": "2026-11-24T17:36:53.809Z",
+      "lastOfferAt": "2026-11-24T17:36:53.809Z",
+      "lastError": null,
+      "runId": "2026-11-24T17:36:35.054Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|DMK|2026-11-24|2026-11-26|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "DMK",
+      "departureDate": "2026-11-24",
+      "returnDate": "2026-11-26",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-11-24T17:36:55.127Z",
+      "lastSuccessAt": null,
+      "lastOfferAt": null,
+      "lastError": "SerpApi error for SIN-DMK: Google Flights hasn't returned any results for this query.",
+      "runId": "2026-11-24T17:36:35.054Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|DMK|2026-12-04|2026-12-07|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "DMK",
+      "departureDate": "2026-12-04",
+      "returnDate": "2026-12-07",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-11-24T17:36:56.975Z",
+      "lastSuccessAt": "2026-11-24T17:36:56.975Z",
+      "lastOfferAt": "2026-11-24T17:36:56.975Z",
+      "lastError": null,
+      "runId": "2026-11-24T17:36:35.054Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|DMK|2026-12-08|2026-12-10|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "DMK",
+      "departureDate": "2026-12-08",
+      "returnDate": "2026-12-10",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-11-24T17:37:03.273Z",
+      "lastSuccessAt": "2026-11-24T17:37:03.273Z",
+      "lastOfferAt": "2026-11-24T17:37:03.273Z",
+      "lastError": null,
+      "runId": "2026-11-24T17:36:35.054Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|DMK|2026-12-11|2026-12-14|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "DMK",
+      "departureDate": "2026-12-11",
+      "returnDate": "2026-12-14",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-11-24T17:37:06.023Z",
+      "lastSuccessAt": "2026-11-24T17:37:06.023Z",
+      "lastOfferAt": "2026-11-24T17:37:06.023Z",
+      "lastError": null,
+      "runId": "2026-11-24T17:36:35.054Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|HKT|2026-12-11|2026-12-14|round-trip|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "HKT",
+      "departureDate": "2026-12-11",
+      "returnDate": "2026-12-14",
+      "tripType": "round-trip",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-11-24T17:37:06.042Z",
+      "lastSuccessAt": "2026-11-24T17:37:06.042Z",
+      "lastOfferAt": "2026-11-24T17:37:06.042Z",
+      "lastError": null,
+      "runId": "2026-11-24T17:36:35.054Z"
+    },
+    "exact|sin-student-budget-aug-dec-2026|SIN|CGK|2026-11-24||one-way|standard|ECONOMY|1|0|0": {
+      "routeId": "sin-student-budget-aug-dec-2026",
+      "origin": "SIN",
+      "destination": "CGK",
+      "departureDate": "2026-11-24",
+      "returnDate": "",
+      "tripType": "one-way",
+      "searchStrategy": "standard",
+      "kind": "exact",
+      "lastAttemptAt": "2026-11-24T17:37:14.779Z",
+      "lastSuccessAt": null,
+      "lastOfferAt": null,
+      "lastError": "SerpApi error for SIN-CGK: Google Flights hasn't returned any results for this query.",
+      "runId": "2026-11-24T17:36:35.054Z"
+    },
+    "construction|construction-bangkok-any|SIN|BKK,DMK|2026-12-11|2026-12-14|round-trip|nearby-airports|ECONOMY|1|0|0": {
+      "routeId": "construction-bangkok-any",
+      "origin": "SIN",
+      "destination": "BKK,DMK",
+      "departureDate": "2026-12-11",
+      "returnDate": "2026-12-14",
+      "tripType": "round-trip",
+      "searchStrategy": "nearby-airports",
+      "kind": "construction",
+      "lastAttemptAt": "2026-11-24T17:37:18.372Z",
+      "lastSuccessAt": "2026-11-24T17:37:18.372Z",
+      "lastOfferAt": "2026-11-24T17:37:18.372Z",
+      "lastError": null,
+      "runId": "2026-11-24T17:36:35.054Z"
     }
   },
   "promotions": {
     "airasia-sg": {
       "fingerprint": "91f7ddcd3af3f2464b2f89e78020173f9bf68f1d8a01f9d5997f57cbdd78070e",
-      "checkedAt": "2026-11-22T14:30:17.410Z",
+      "checkedAt": "2026-11-24T17:37:18.803Z",
       "url": "https://www.airasia.com/promotions/sg/",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     },
     "scoot-deals": {
       "fingerprint": "5d27d9f9380211748aed95191f4660b3fcf8657daf93108a9c4425e9a9e3d19e",
-      "checkedAt": "2026-11-22T14:30:19.058Z",
+      "checkedAt": "2026-11-24T17:37:21.060Z",
       "url": "https://www.flyscoot.com/en/discover/unbeatable-travel-deals",
       "candidateFingerprint": null,
       "candidateSeenCount": 0
     }
   },
   "promotionErrors": [],
-  "lastRunAt": "2026-11-22T14:29:24.531Z",
+  "lastRunAt": "2026-11-24T17:36:35.054Z",
   "constructionEvidence": {
     "split-SIN-PEN": {
       "lastSelectedAt": "2026-07-20T09:32:27.473Z",
@@ -6925,12 +7064,12 @@
       "evidence": []
     },
     "bangkok-any": {
-      "lastSelectedAt": "2026-11-05T14:33:48.898Z",
-      "score": 54.9,
-      "expectedSavings": 44,
-      "expectedSavingsPercent": 15,
+      "lastSelectedAt": "2026-11-24T17:36:35.054Z",
+      "score": 24.83,
+      "expectedSavings": 0,
+      "expectedSavingsPercent": 0,
       "evidence": [
-        "recent grouped fare 243"
+        "recent component-airport floor 377"
       ]
     },
     "kuala-lumpur-any": {
@@ -7008,10 +7147,10 @@
       ]
     }
   },
-  "dateFirstReturnCursor": 2,
+  "dateFirstReturnCursor": 0,
   "dateFirstOneWayCursor": 1,
   "dateFirstLaneDates": [
-    "2026-12-04/2026-12-07",
-    "2026-11-24 one-way"
+    "2026-12-11/2026-12-14",
+    "2026-12-08 one-way"
   ]
 }
